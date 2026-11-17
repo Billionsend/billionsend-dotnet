@@ -90,9 +90,10 @@ namespace BillionSend
     /// <remarks>
     /// When the connection drops (the server also closes every stream about every ten minutes) it
     /// reconnects with <c>Last-Event-ID</c>, and the events in between are replayed first, unless
-    /// <see cref="EventStreamOptions.Reconnect"/> is false. After
-    /// <see cref="EventStreamOptions.MaxReconnects"/> failures in a row it throws an
-    /// <see cref="ApiConnectionException"/>; a refusal a retry cannot fix (a revoked key, say) is
+    /// <see cref="EventStreamOptions.Reconnect"/> is false. A connection that opened is no failure
+    /// however it ends, so a quiet inbox's stream goes on for ever; after
+    /// <see cref="EventStreamOptions.MaxReconnects"/> reconnects in a row that fail to open it
+    /// throws an <see cref="ApiConnectionException"/>; a refusal a retry cannot fix (a revoked key, say) is
     /// thrown as its own <see cref="BillionSendException"/> type. Cancelling the token given to
     /// the method that opened the stream, or to the loop (<c>WithCancellation</c>), throws
     /// <see cref="OperationCanceledException"/>. A stream can be iterated once.
@@ -277,13 +278,8 @@ namespace BillionSend
                         yield break;
                     }
 
-                    failures++;
-                    if (failures > _options.MaxReconnects)
-                    {
-                        throw new ApiConnectionException(
-                            $"The event stream disconnected; gave up after {_options.MaxReconnects} reconnects");
-                    }
-
+                    // A connection that opened and then ended is not a failure: the server closes
+                    // a quiet stream on schedule. Only reconnects that fail to open count, in a row.
                     var next = await ReconnectAsync(token, loopToken).ConfigureAwait(false);
                     if (next is null)
                     {
@@ -292,8 +288,17 @@ namespace BillionSend
                             yield break;
                         }
 
+                        failures++;
+                        if (failures > _options.MaxReconnects)
+                        {
+                            throw new ApiConnectionException(
+                                $"The event stream could not reconnect; gave up after {_options.MaxReconnects} reconnects");
+                        }
+
                         continue;
                     }
+
+                    failures = 0;
 
                     lock (_gate)
                     {

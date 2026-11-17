@@ -112,7 +112,7 @@ namespace BillionSend
         /// <summary>Reconnect with <c>Last-Event-ID</c> when the connection drops (default <see langword="true"/>).</summary>
         public bool Reconnect { get; set; } = true;
 
-        /// <summary>Reconnect attempts in a row before giving up (default 5).</summary>
+        /// <summary>Reconnects in a row that fail to open before giving up (default 5); one that opens resets the count.</summary>
         public int MaxReconnects { get; set; } = 5;
 
         /// <summary>The wait before reconnecting (default 1 second; a server <c>retry</c> field overrides it).</summary>

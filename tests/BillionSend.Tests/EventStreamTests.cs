@@ -165,6 +165,7 @@ public sealed class EventStreamTests : MockTest
             return Task.CompletedTask;
         });
         Mock.Error(One, 503, "unavailable", "Busy");
+        Mock.Error(One, 503, "unavailable", "Busy");
         using var client = Client();
         await using var stream = await client.Inboxes.Events.StreamInboxAsync(
             Inbox,
@@ -181,9 +182,68 @@ public sealed class EventStreamTests : MockTest
         Assert.Contains("gave up after 1 reconnects", error.Message);
         Assert.Equal([41, 42], data);
         var hits = Mock.HitsFor(One);
-        Assert.Equal(["40", "41", "42"], hits.Select(hit => hit.Header("last-event-id")));
+        Assert.Equal(["40", "41", "42", "42"], hits.Select(hit => hit.Header("last-event-id")));
         Assert.All(hits, hit => Assert.Equal("inbox.email.received", hit.Query["types"]));
         Assert.All(hits, hit => Assert.Equal("/inboxes/support%40example.com/events", hit.Url.AbsolutePath));
+    }
+
+    [Fact]
+    public async Task KeepsAQuietStreamGoingThroughEveryScheduledCloseAndCountsOnlyFailedOpens()
+    {
+        // The server closes a quiet stream about every ten minutes: eight in a row, each opened
+        // and ended with nothing but keep-alives, are no failure with MaxReconnects = 2.
+        for (var i = 0; i < 8; i++)
+        {
+            Mock.Stream(Team, stream =>
+            {
+                stream.Write(": keep-alive\n\n");
+                stream.End();
+                return Task.CompletedTask;
+            });
+        }
+
+        // A failed open between two that open does not add up either.
+        Mock.Error(Team, 503, "unavailable", "Busy");
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write("id: 7\ndata: {\"n\":7}\n\n");
+            stream.End();
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamAsync(
+            options: new EventStreamOptions { MaxReconnects = 2, ReconnectDelay = TimeSpan.FromMilliseconds(1) });
+        var data = new List<int>();
+        await foreach (var item in stream)
+        {
+            data.Add((int)item.Data!["n"]!);
+            break;
+        }
+
+        Assert.Equal([7], data);
+        Assert.Equal(10, Mock.HitsFor(Team).Count);
+    }
+
+    [Fact]
+    public async Task GivesUpAfterMaxReconnectsThatFailToOpenInARow()
+    {
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write(": keep-alive\n\n");
+            stream.End();
+            return Task.CompletedTask;
+        });
+        for (var i = 0; i < 3; i++)
+        {
+            Mock.Error(Team, 503, "unavailable", "Busy");
+        }
+
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamAsync(
+            options: new EventStreamOptions { MaxReconnects = 2, ReconnectDelay = TimeSpan.FromMilliseconds(1) });
+        var error = await Assert.ThrowsAsync<ApiConnectionException>(() => Drain(stream));
+        Assert.Contains("gave up after 2 reconnects", error.Message);
+        Assert.Equal(4, Mock.HitsFor(Team).Count);
     }
 
     [Fact]
