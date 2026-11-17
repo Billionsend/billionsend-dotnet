@@ -115,6 +115,38 @@ public sealed class PaginationTests : MockTest
         Assert.Single(Mock.Hits);
     }
 
+    [Theory]
+    [InlineData("{\"object\":\"list\"}")]
+    [InlineData("{\"data\":{}}")]
+    [InlineData("[]")]
+    public async Task ThrowsOnAnAnswerThatIsNotAListPage(string answer)
+    {
+        var error = await Assert.ThrowsAsync<BillionSendException>(async () =>
+        {
+            await foreach (var _ in Pagination.IterateAsync((_, _) => Task.FromResult(JsonNode.Parse(answer))))
+            {
+            }
+        });
+        Assert.Equal("application_error", error.Name);
+        Assert.Null(error.StatusCode);
+    }
+
+    [Fact]
+    public async Task ThrowsWhenTheItemToContinueFromHasNoId()
+    {
+        var page = new JsonObject { ["data"] = new JsonArray(new JsonObject { ["name"] = "x" }), ["has_more"] = true };
+        var seen = 0;
+        var error = await Assert.ThrowsAsync<BillionSendException>(async () =>
+        {
+            await foreach (var _ in Pagination.IterateAsync((_, _) => Task.FromResult<JsonNode?>(page)))
+            {
+                seen++;
+            }
+        });
+        Assert.Equal(1, seen);
+        Assert.Equal("application_error", error.Name);
+    }
+
     [Fact]
     public async Task IterateWorksWithAnyPageFetcherAndDetachesItems()
     {

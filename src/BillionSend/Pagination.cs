@@ -23,7 +23,9 @@ namespace BillionSend
         /// A page is a JSON object with a <c>data</c> array of items that carry an <c>id</c>, and
         /// <c>has_more</c>. Starting with <c>before</c> set walks backward (using the first id of
         /// each page); otherwise it walks forward from <c>after</c> (using the last id). A failed
-        /// page is thrown as its <see cref="BillionSendException"/>. The items are detached from
+        /// page is thrown as its <see cref="BillionSendException"/>, and so is an answer that is
+        /// not a list page (no <c>data</c> array, or an item to continue from without an <c>id</c>),
+        /// with the name <c>application_error</c>. The items are detached from
         /// their page, so they can be added to other JSON trees.
         /// </remarks>
         /// <param name="fetchPage">Fetches one page for the given query (the start query with the cursor set).</param>
@@ -62,9 +64,11 @@ namespace BillionSend
 
                 cancellationToken.ThrowIfCancellationRequested();
                 var answer = await fetchPage(page, cancellationToken).ConfigureAwait(false);
+                // A page that is not a list page is an error, as in the other clients: ending
+                // quietly would pass off a truncated walk as the whole list.
                 if (answer is not JsonObject body || body["data"] is not JsonArray data)
                 {
-                    yield break;
+                    throw new BillionSendException("The list page has no data array");
                 }
 
                 var items = data.ToList();
@@ -86,7 +90,7 @@ namespace BillionSend
                 var edge = backward ? items[0] : items[items.Count - 1];
                 if (edge?["id"] is not JsonNode id)
                 {
-                    yield break;
+                    throw new BillionSendException("The last item of the list page has no id to continue from");
                 }
 
                 cursor = Urls.Format(id);
