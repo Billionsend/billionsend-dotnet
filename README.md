@@ -330,9 +330,8 @@ Publishing is manual; nothing is published on push, and nothing is ever pushed f
 
 What it takes:
 
-- A nuget.org account that owns (or, for the first version, will own) the `BillionSend` package ID, ideally an organization account named `billionsend` with the maintainers as members.
-- On nuget.org, signed in as that account: your name → **Trusted Publishing** → add a policy for GitHub Actions with repository owner `billionsend`, repository `billionsend-dotnet`, workflow file `release.yml` and environment `nuget`.
-- The repository secret `NUGET_USER` (Settings → Secrets and variables → Actions, or a secret of the `nuget` environment): the nuget.org account name the policy belongs to. It is a user name, not a key. The `nuget` environment can also require a reviewer's approval before the job runs.
+- The `BillionSend` package ID belongs to the nuget.org organization `BillionSend`; its Trusted Publishing policy (GitHub Actions, repository `billionsend/billionsend-dotnet`, workflow file `release.yml`) is active.
+- The workflow logs in as the nuget.org user `ikbear`, a member of that organization, written in `release.yml` (`NuGet/login`'s `user`). It is a user name, not a key: no repository secret is needed. To publish as someone else, change that line. The `nuget` environment can require a reviewer's approval before the job runs.
 
 Steps:
 

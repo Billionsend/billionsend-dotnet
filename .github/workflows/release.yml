@@ -2,9 +2,9 @@ name: release
 
 # Publishes the BillionSend package to nuget.org at the version the project
 # declares, with NuGet Trusted Publishing: NuGet/login trades the job's OIDC
-# token for a short-lived API key, so no key is stored. The only secret is
-# NUGET_USER, the nuget.org account (not a key) that owns the Trusted Publishing
-# policy. Run it by hand (Actions → release → Run workflow) on a version tag;
+# token for a short-lived API key, so no key and no secret is stored. The
+# nuget.org user it logs in as is written below: a user name, not a key. Run it
+# by hand (Actions → release → Run workflow) on a version tag;
 # see "Releasing" in the README.
 on:
   workflow_dispatch:
@@ -40,7 +40,7 @@ jobs:
         id: login
         uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1 (v1.2.0)
         with:
-          user: ${{ secrets.NUGET_USER }}
+          user: ikbear
       # Pushing the .nupkg pushes the .snupkg beside it to the symbol server too.
       - name: Push to nuget.org
         run: dotnet nuget push "artifacts/BillionSend.*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json
