@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Generate, build, test and pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
+        with:
+          global-json-file: global.json
+      - name: Generated code matches the OpenAPI snapshot
+        run: python3 scripts/generate.py --check
+      - run: dotnet restore
+      - run: dotnet build --no-restore -c Release
+      - run: dotnet test --no-build -c Release
+      - run: dotnet pack src/BillionSend --no-build -c Release -o artifacts
+      - name: The package carries the README, the license and the XML docs
+        run: |
+          unzip -l artifacts/BillionSend.*.nupkg | grep -q ' README.md$'
+          unzip -l artifacts/BillionSend.*.nupkg | grep -q 'lib/net8.0/BillionSend.xml$'
+          unzip -p artifacts/BillionSend.*.nupkg BillionSend.nuspec | grep -q '<license type="expression">MIT</license>'
