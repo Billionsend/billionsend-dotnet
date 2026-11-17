@@ -172,14 +172,15 @@ public sealed class EventStreamTests : MockTest
             new Dictionary<string, object?> { ["types"] = "inbox.email.received" },
             new EventStreamOptions { LastEventId = "40", ReconnectDelay = TimeSpan.FromSeconds(5), MaxReconnects = 1 });
         var data = new List<int>();
-        var error = await Assert.ThrowsAsync<ApiConnectionException>(async () =>
+        // The reconnects are refused: the last refusal is what is thrown.
+        var error = await Assert.ThrowsAsync<ApiException>(async () =>
         {
             await foreach (var item in stream)
             {
                 data.Add((int)item.Data!["n"]!);
             }
         });
-        Assert.Contains("gave up after 1 reconnects", error.Message);
+        Assert.Equal(503, error.StatusCode);
         Assert.Equal([41, 42], data);
         var hits = Mock.HitsFor(One);
         Assert.Equal(["40", "41", "42", "42"], hits.Select(hit => hit.Header("last-event-id")));
@@ -225,7 +226,53 @@ public sealed class EventStreamTests : MockTest
     }
 
     [Fact]
-    public async Task GivesUpAfterMaxReconnectsThatFailToOpenInARow()
+    public async Task WaitsTheRetryAfterOfARefusedReconnectAndThrowsTheLastRefusalWhenTheyRunOut()
+    {
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write(": keep-alive\n\n");
+            stream.End();
+            return Task.CompletedTask;
+        });
+        Mock.Error(Team, 503, "unavailable", "Busy", new Dictionary<string, string> { ["Retry-After"] = "1" });
+        Mock.Error(Team, 429, "rate_limit_exceeded", "Slow down", new Dictionary<string, string> { ["Retry-After"] = "1" });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamAsync(
+            options: new EventStreamOptions { MaxReconnects = 1, ReconnectDelay = TimeSpan.FromMilliseconds(1) });
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        var error = await Assert.ThrowsAsync<RateLimitException>(() => Drain(stream));
+        Assert.Equal("rate_limit_exceeded", error.Name);
+        // The second reconnect waited the first refusal's retry-after, not the 1 ms delay.
+        Assert.True(clock.Elapsed >= TimeSpan.FromMilliseconds(950), clock.Elapsed.ToString());
+        Assert.Equal(3, Mock.HitsFor(Team).Count);
+    }
+
+    [Fact]
+    public async Task ThrowsARefusalWhoseRetryAfterIsOverAMinuteAtOnce()
+    {
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write(": keep-alive\n\n");
+            stream.End();
+            return Task.CompletedTask;
+        });
+        Mock.Error(Team, 429, "rate_limit_exceeded", "Slow down", new Dictionary<string, string> { ["Retry-After"] = "120" });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamAsync(
+            options: new EventStreamOptions { ReconnectDelay = TimeSpan.FromMilliseconds(1) });
+        // Bounded, so a stream that kept reconnecting would fail here rather than hang.
+        using var bound = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await Assert.ThrowsAsync<RateLimitException>(async () =>
+        {
+            await foreach (var _ in stream.WithCancellation(bound.Token))
+            {
+            }
+        });
+        Assert.Equal(2, Mock.HitsFor(Team).Count);
+    }
+
+    [Fact]
+    public async Task GivesUpAfterMaxReconnectsThatCannotConnect()
     {
         Mock.Stream(Team, stream =>
         {
@@ -235,7 +282,7 @@ public sealed class EventStreamTests : MockTest
         });
         for (var i = 0; i < 3; i++)
         {
-            Mock.Error(Team, 503, "unavailable", "Busy");
+            Mock.Fail(Team, new HttpRequestException("Connection refused"));
         }
 
         using var client = Client();

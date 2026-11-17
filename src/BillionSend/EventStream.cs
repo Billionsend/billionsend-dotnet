@@ -91,9 +91,12 @@ namespace BillionSend
     /// When the connection drops (the server also closes every stream about every ten minutes) it
     /// reconnects with <c>Last-Event-ID</c>, and the events in between are replayed first, unless
     /// <see cref="EventStreamOptions.Reconnect"/> is false. A connection that opened is no failure
-    /// however it ends, so a quiet inbox's stream goes on for ever; after
-    /// <see cref="EventStreamOptions.MaxReconnects"/> reconnects in a row that fail to open it
-    /// throws an <see cref="ApiConnectionException"/>; a refusal a retry cannot fix (a revoked key, say) is
+    /// however it ends, so a quiet inbox's stream goes on for ever. A reconnect the API refuses
+    /// with a <c>retry-after</c> (a 429 or a 5xx) waits that long, and one longer than a minute is
+    /// thrown at once. After <see cref="EventStreamOptions.MaxReconnects"/> reconnects in a row
+    /// that fail to open it throws the last refusal (<see cref="RateLimitException"/>,
+    /// <see cref="ApiException"/>, ...), or an <see cref="ApiConnectionException"/> when the API
+    /// could not be reached at all; a refusal a retry cannot fix (a revoked key, say) is
     /// thrown as its own <see cref="BillionSendException"/> type. Cancelling the token given to
     /// the method that opened the stream, or to the loop (<c>WithCancellation</c>), throws
     /// <see cref="OperationCanceledException"/>. A stream can be iterated once.
@@ -195,6 +198,7 @@ namespace BillionSend
             using var linked = CancellationTokenSource.CreateLinkedTokenSource(_openToken, loopToken, _closing.Token);
             var token = linked.Token;
             var failures = 0;
+            TimeSpan? retryWait = null;
             // The position a gap was last handed out for; the server repeats the gap on every
             // reconnect from that position until a newer event moves it.
             var gapHandedOut = false;
@@ -280,7 +284,9 @@ namespace BillionSend
 
                     // A connection that opened and then ended is not a failure: the server closes
                     // a quiet stream on schedule. Only reconnects that fail to open count, in a row.
-                    var next = await ReconnectAsync(token, loopToken).ConfigureAwait(false);
+                    var wait = retryWait ?? _delay;
+                    retryWait = null;
+                    var (next, refusal) = await ReconnectAsync(wait, token, loopToken).ConfigureAwait(false);
                     if (next is null)
                     {
                         if (IsClosed)
@@ -288,11 +294,31 @@ namespace BillionSend
                             yield break;
                         }
 
+                        // A 429 or 5xx with a retry-after sets the next wait; one past the limit
+                        // is thrown at once, as for any request.
+                        var seconds = Retry.ParseRetryAfter(refusal?.RetryAfterHeader, DateTimeOffset.UtcNow);
+                        if (refusal is not null && seconds is not null)
+                        {
+                            var ms = seconds.Value * 1000;
+                            if (ms > Retry.MaxRetryAfter.TotalMilliseconds)
+                            {
+                                throw refusal;
+                            }
+
+                            retryWait = TimeSpan.FromMilliseconds(Math.Ceiling(ms));
+                        }
+
                         failures++;
                         if (failures > _options.MaxReconnects)
                         {
-                            throw new ApiConnectionException(
-                                $"The event stream could not reconnect; gave up after {_options.MaxReconnects} reconnects");
+                            // The API's own answer says why; without one the stream could not connect.
+                            if (refusal is null || refusal is ApiConnectionException)
+                            {
+                                throw new ApiConnectionException(
+                                    $"The event stream could not reconnect; gave up after {_options.MaxReconnects} reconnects");
+                            }
+
+                            throw refusal;
                         }
 
                         continue;
@@ -319,23 +345,24 @@ namespace BillionSend
         }
 
         /// <summary>
-        /// Waits, then opens the next connection. <see langword="null"/> when closed meanwhile, or
-        /// when the attempt failed in a way worth another try.
+        /// Waits, then opens the next connection. No connection when closed meanwhile, or when the
+        /// attempt failed in a way worth another try, with that refusal when there was one.
         /// </summary>
-        private async Task<StreamConnection?> ReconnectAsync(CancellationToken token, CancellationToken loopToken)
+        private async Task<(StreamConnection? Connection, BillionSendException? Refusal)> ReconnectAsync(
+            TimeSpan wait, CancellationToken token, CancellationToken loopToken)
         {
             try
             {
-                await Task.Delay(_delay, token).ConfigureAwait(false);
-                return await _connect(LastEventId, token).ConfigureAwait(false);
+                await Task.Delay(wait, token).ConfigureAwait(false);
+                return (await _connect(LastEventId, token).ConfigureAwait(false), null);
             }
             catch (OperationCanceledException) when (!IsCallerCancellation(loopToken))
             {
-                return null;
+                return (null, null);
             }
             catch (BillionSendException error) when (Retry.IsRetryable(error, keyed: false))
             {
-                return null;
+                return (null, error);
             }
         }
 
