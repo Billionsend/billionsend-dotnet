@@ -88,12 +88,17 @@ namespace BillionSend
                 }
 
                 var edge = backward ? items[0] : items[items.Count - 1];
-                if (edge?["id"] is not JsonNode id)
+                // Only a non-empty string is an id to continue from: an empty, numeric or
+                // structured one would page from the wrong place.
+                if (edge?["id"] is not JsonValue value || !value.TryGetValue<string>(out var id) || id.Length == 0)
                 {
-                    throw new BillionSendException("The last item of the list page has no id to continue from");
+                    throw new BillionSendException(
+                        backward
+                            ? "The first item of the list page has no id to continue from"
+                            : "The last item of the list page has no id to continue from");
                 }
 
-                cursor = Urls.Format(id);
+                cursor = id;
             }
         }
     }

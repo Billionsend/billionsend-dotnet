@@ -131,10 +131,15 @@ public sealed class PaginationTests : MockTest
         Assert.Null(error.StatusCode);
     }
 
-    [Fact]
-    public async Task ThrowsWhenTheItemToContinueFromHasNoId()
+    [Theory]
+    [InlineData("{\"name\":\"x\"}")]
+    [InlineData("{\"id\":\"\"}")]
+    [InlineData("{\"id\":null}")]
+    [InlineData("{\"id\":7}")]
+    [InlineData("{\"id\":{}}")]
+    public async Task ThrowsWhenTheItemToContinueFromHasNoId(string item)
     {
-        var page = new JsonObject { ["data"] = new JsonArray(new JsonObject { ["name"] = "x" }), ["has_more"] = true };
+        var page = new JsonObject { ["data"] = new JsonArray(JsonNode.Parse(item)), ["has_more"] = true };
         var seen = 0;
         var error = await Assert.ThrowsAsync<BillionSendException>(async () =>
         {
@@ -145,6 +150,25 @@ public sealed class PaginationTests : MockTest
         });
         Assert.Equal(1, seen);
         Assert.Equal("application_error", error.Name);
+        Assert.Contains("last item", error.Message);
+    }
+
+    [Fact]
+    public async Task WalkingBackwardNamesTheFirstItem()
+    {
+        var page = new JsonObject
+        {
+            ["data"] = new JsonArray(new JsonObject { ["id"] = "" }, new JsonObject { ["id"] = "b" }),
+            ["has_more"] = true,
+        };
+        var start = new Dictionary<string, object?> { ["before"] = "z" };
+        var error = await Assert.ThrowsAsync<BillionSendException>(async () =>
+        {
+            await foreach (var _ in Pagination.IterateAsync((_, _) => Task.FromResult<JsonNode?>(page), start))
+            {
+            }
+        });
+        Assert.Contains("first item", error.Message);
     }
 
     [Fact]
