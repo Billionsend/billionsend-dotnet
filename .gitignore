@@ -1,0 +1,13 @@
+bin/
+obj/
+artifacts/
+TestResults/
+*.nupkg
+*.snupkg
+.nuget-cache/
+.dotnet-home/
+*.user
+.vs/
+.idea/
+.DS_Store
+__pycache__/

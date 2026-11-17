@@ -1,0 +1,36 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{B2CE4417-4766-47EE-AA36-6B210A851553}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BillionSend", "src\BillionSend\BillionSend.csproj", "{3300A20F-FE11-4EB0-96E0-FB1DBF32B447}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{E7220A17-01F5-4DAD-9DCD-30830F00D033}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "BillionSend.Tests", "tests\BillionSend.Tests\BillionSend.Tests.csproj", "{8AA08532-C4FF-4447-804F-D8F564A1E4C8}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{3300A20F-FE11-4EB0-96E0-FB1DBF32B447}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{3300A20F-FE11-4EB0-96E0-FB1DBF32B447}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{3300A20F-FE11-4EB0-96E0-FB1DBF32B447}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{3300A20F-FE11-4EB0-96E0-FB1DBF32B447}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8AA08532-C4FF-4447-804F-D8F564A1E4C8}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8AA08532-C4FF-4447-804F-D8F564A1E4C8}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8AA08532-C4FF-4447-804F-D8F564A1E4C8}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8AA08532-C4FF-4447-804F-D8F564A1E4C8}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{3300A20F-FE11-4EB0-96E0-FB1DBF32B447} = {B2CE4417-4766-47EE-AA36-6B210A851553}
+		{8AA08532-C4FF-4447-804F-D8F564A1E4C8} = {E7220A17-01F5-4DAD-9DCD-30830F00D033}
+	EndGlobalSection
+EndGlobal
