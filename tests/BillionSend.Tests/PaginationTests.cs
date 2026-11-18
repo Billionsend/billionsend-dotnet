@@ -236,7 +236,11 @@ public sealed class PaginationTests : MockTest
 
         var method = target!.GetType().GetMethod(char.ToUpperInvariant(parts[^1][0]) + parts[^1][1..] + "AllAsync")!;
         var args = method.GetParameters()
-            .Select(p => p.ParameterType == typeof(string) ? (object?)(p.Name == "inboxId" ? Inbox : Id) : p.HasDefaultValue ? p.DefaultValue : null)
+            .Select(p => p.ParameterType == typeof(string)
+                ? (object?)(p.Name == "inboxId" ? Inbox : Id)
+                : p.Name == "query" && !p.HasDefaultValue
+                    ? RequiredQuery(op)
+                    : p.HasDefaultValue ? p.DefaultValue : null)
             .ToArray();
         var items = (IAsyncEnumerable<JsonNode>)method.Invoke(target, args)!;
         Assert.Equal([Ids[0], Ids[1]], await Ids_(items));
@@ -245,4 +249,10 @@ public sealed class PaginationTests : MockTest
         Assert.False(hits[0].Query.ContainsKey("after"));
         Assert.Equal(Ids[0], hits[1].Query["after"]);
     }
+
+    /// <summary>A list whose query has required parameters (the recipients' <c>type</c>) takes them as its first argument.</summary>
+    private static Dictionary<string, object?> RequiredQuery(Operation op) =>
+        op.Parameters("query")
+            .Where(p => (bool?)p["required"] == true)
+            .ToDictionary(p => (string)p["name"]!, p => (object?)Spec.Example(p["schema"], full: false)!.GetValue<string>());
 }

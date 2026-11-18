@@ -25,6 +25,9 @@ namespace BillionSend
         /// <summary>The <c>audiences</c> operations.</summary>
         public AudiencesResource Audiences { get; private set; } = null!;
 
+        /// <summary>The <c>automations</c> operations.</summary>
+        public AutomationsResource Automations { get; private set; } = null!;
+
         /// <summary>The <c>broadcasts</c> operations.</summary>
         public BroadcastsResource Broadcasts { get; private set; } = null!;
 
@@ -43,8 +46,17 @@ namespace BillionSend
         /// <summary>The <c>emails</c> operations.</summary>
         public EmailsResource Emails { get; private set; } = null!;
 
+        /// <summary>The <c>events</c> operations.</summary>
+        public EventsResource Events { get; private set; } = null!;
+
         /// <summary>The <c>inboxes</c> operations.</summary>
         public InboxesResource Inboxes { get; private set; } = null!;
+
+        /// <summary>The <c>logs</c> operations.</summary>
+        public LogsResource Logs { get; private set; } = null!;
+
+        /// <summary>The <c>oauthGrants</c> operations.</summary>
+        public OauthGrantsResource OauthGrants { get; private set; } = null!;
 
         /// <summary>The <c>segments</c> operations.</summary>
         public SegmentsResource Segments { get; private set; } = null!;
@@ -75,13 +87,17 @@ namespace BillionSend
             Agent = new AgentResource(api);
             ApiKeys = new ApiKeysResource(api);
             Audiences = new AudiencesResource(api);
+            Automations = new AutomationsResource(api);
             Broadcasts = new BroadcastsResource(api);
             ContactProperties = new ContactPropertiesResource(api);
             Contacts = new ContactsResource(api);
             Deliverability = new DeliverabilityResource(api);
             Domains = new DomainsResource(api);
             Emails = new EmailsResource(api);
+            Events = new EventsResource(api);
             Inboxes = new InboxesResource(api);
+            Logs = new LogsResource(api);
+            OauthGrants = new OauthGrantsResource(api);
             Segments = new SegmentsResource(api);
             Suppressions = new SuppressionsResource(api);
             Templates = new TemplatesResource(api);
@@ -318,6 +334,41 @@ namespace BillionSend.Resources
                 (page, ct) => ListAsync(page, options, ct),
                 query,
                 cancellationToken);
+
+        /// <summary>
+        /// Update an API key.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Renames the key. Its permission, domain and inbox scope never change: mint a new key for
+        /// another scope. A key held to one domain updates only keys held to that same domain; any
+        /// other key is not found.
+        /// </para>
+        /// <para>
+        /// <c>PATCH /api-keys/{id}</c> (<c>apiKeys.update</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="body">The request body (<c>UpdateApiKeyRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>UpdateApiKeyResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UpdateAsync(
+            string id,
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("PATCH", "/api-keys/{id}", new[] { id })
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
     }
 
     /// <summary>The <c>audiences</c> operations.</summary>
@@ -346,7 +397,7 @@ namespace BillionSend.Resources
         }
 
         /// <summary>
-        /// Create a contact.
+        /// Create a contact in an audience.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -376,7 +427,7 @@ namespace BillionSend.Resources
                 cancellationToken);
 
         /// <summary>
-        /// Delete a contact.
+        /// Delete a contact from an audience.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -410,7 +461,7 @@ namespace BillionSend.Resources
                 cancellationToken);
 
         /// <summary>
-        /// Retrieve a contact.
+        /// Retrieve a contact in an audience.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -438,7 +489,7 @@ namespace BillionSend.Resources
                 cancellationToken);
 
         /// <summary>
-        /// Update a contact.
+        /// Update a contact in an audience.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -473,6 +524,491 @@ namespace BillionSend.Resources
                 cancellationToken);
     }
 
+    /// <summary>The <c>automations</c> operations.</summary>
+    public sealed class AutomationsResource
+    {
+        private readonly ApiClient _api;
+
+        internal AutomationsResource(ApiClient api)
+        {
+            _api = api;
+            Runs = new AutomationsRunsResource(api);
+        }
+
+        /// <summary>The <c>automations.runs</c> operations.</summary>
+        public AutomationsRunsResource Runs { get; }
+
+        /// <summary>
+        /// Create an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Steps and connections are checked on every write; a draft may be incomplete. With status
+        /// enabled the whole automation is checked, including that its templates, sender domains,
+        /// topics and segments exist (422 with each problem and its JSON Pointer). An agent key can
+        /// only write drafts (403).
+        /// </para>
+        /// <para>
+        /// <c>POST /automations</c> (<c>automations.create</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The request body (<c>CreateAutomationRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>AutomationIdResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> CreateAsync(
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/automations", ApiCall.NoPath)
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Duplicate an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// A new automation named "&lt;name&gt; (copy)", disabled, with the same steps and
+        /// connections.
+        /// </para>
+        /// <para>
+        /// <c>POST /automations/{id}/duplicate</c> (<c>automations.duplicate</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>AutomationIdResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> DuplicateAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/automations/{id}/duplicate", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Retrieve an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>GET /automations/{id}</c> (<c>automations.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>GetAutomationResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/automations/{id}", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// List automations.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Newest first, with cursor pagination: `after` takes the last id of a page and pages
+        /// toward older items, `before` takes the first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
+        /// <c>GET /automations</c> (<c>automations.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>, <c>status</c> (<c>enabled</c>, <c>disabled</c>).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListAutomationsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/automations", ApiCall.NoPath)
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>, <c>status</c> (<c>enabled</c>, <c>disabled</c>).</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(page, options, ct),
+                query,
+                cancellationToken);
+
+        /// <summary>
+        /// Metrics of an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. What the statistics store counted for the automation in a period
+        /// (default the last seven UTC days): runs started, completed, failed and cancelled; the
+        /// results of the mail it sent; and for every step of the current version the people who
+        /// entered, finished, failed in and skipped it. Counts follow the sink loop within seconds.
+        /// </para>
+        /// <para>
+        /// <c>GET /automations/{id}/metrics</c> (<c>automations.metrics</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>start_date</c>,
+        /// <c>end_date</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>AutomationMetricsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> MetricsAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/automations/{id}/metrics", new[] { id })
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Remove an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Removes the automation and its versions at once; runs still going are not executed any
+        /// more, and its run history is deleted in the background.
+        /// </para>
+        /// <para>
+        /// <c>DELETE /automations/{id}</c> (<c>automations.remove</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>RemoveAutomationResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> RemoveAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("DELETE", "/automations/{id}", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Simulate a run of an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. Works out one contact's pass through the automation's current
+        /// steps without running anything: which way each step goes, when, and the mail it would
+        /// send. The clock is the simulation's own: delays and waits move it, so a flow of days
+        /// answers at once. Waits take the events given, in order. Nothing is sent, stored or
+        /// counted. Send steps are checked against the published template, the sender domain, the
+        /// topic, the recipient's opt-outs and the suppression list; the team's send quota,
+        /// reputation holds and reviews are decided only when mail is really accepted.
+        /// contact_update changes a copy of the contact for the steps after it. Works on a draft
+        /// too, if it has a trigger.
+        /// </para>
+        /// <para>
+        /// <c>POST /automations/{id}/simulate</c> (<c>automations.simulate</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="body">The request body (<c>SimulateAutomationRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>SimulateAutomationResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> SimulateAsync(
+            string id,
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/automations/{id}/simulate", new[] { id })
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Stop an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Sets the automation to disabled: no new runs start; runs already going finish. Stopping
+        /// a stopped automation answers the same.
+        /// </para>
+        /// <para>
+        /// <c>POST /automations/{id}/stop</c> (<c>automations.stop</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>StopAutomationResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> StopAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/automations/{id}/stop", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Update an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Name, status and/or steps with connections. Changing the steps adds a version; runs
+        /// already going keep the version they started on. An enabled automation's steps cannot
+        /// change (409): stop it first, or give status disabled in the same request, or duplicate
+        /// it. Enabling checks the whole automation (422 with each problem and its JSON Pointer);
+        /// an agent key cannot enable (403).
+        /// </para>
+        /// <para>
+        /// <c>PATCH /automations/{id}</c> (<c>automations.update</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="body">The request body (<c>UpdateAutomationRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>AutomationIdResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UpdateAsync(
+            string id,
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("PATCH", "/automations/{id}", new[] { id })
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Validate an automation document.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. Checks steps and connections without storing anything. Always
+        /// answers 200 with every problem found: layer draft are the problems that stop a save (the
+        /// same check as every write), layer enable are what stops enabling (a trigger,
+        /// reachability, and that the templates, sender domains, topics and segments exist;
+        /// reported only for a document that can be saved). Each has a JSON Pointer path into the
+        /// submitted document, a stable code and a suggestion.
+        /// </para>
+        /// <para>
+        /// <c>POST /automations/validate</c> (<c>automations.validate</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The request body (<c>ValidateAutomationRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ValidateAutomationResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ValidateAsync(
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/automations/validate", ApiCall.NoPath)
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>automations.runs</c> operations.</summary>
+    public sealed class AutomationsRunsResource
+    {
+        private readonly ApiClient _api;
+
+        internal AutomationsRunsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Cancel a run of an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. Ends a running run as cancelled: its waiting step is skipped and
+        /// nothing more happens for it. Mail the run already queued is not recalled. A run that is
+        /// already completed, failed or cancelled answers 409.
+        /// </para>
+        /// <para>
+        /// <c>POST /automations/{id}/runs/{run_id}/cancel</c> (<c>automations.runs.cancel</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="runId"><c>run_id</c>: Run id</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>CancelAutomationRunResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> CancelAsync(
+            string id,
+            string runId,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/automations/{id}/runs/{run_id}/cancel", new[] { id, runId }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Retrieve a run of an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The run with every step of its automation's version: the steps that ran in the order
+        /// they ran, with their output and error, then the rest as pending (still reachable) or
+        /// skipped.
+        /// </para>
+        /// <para>
+        /// <c>GET /automations/{id}/runs/{run_id}</c> (<c>automations.runs.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="runId"><c>run_id</c>: Run id</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>GetAutomationRunResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string id,
+            string runId,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/automations/{id}/runs/{run_id}", new[] { id, runId }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// List the runs of an automation.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Newest first, with cursor pagination: `after` takes the last id of a page and pages
+        /// toward older items, `before` takes the first id and pages back toward newer ones. status
+        /// keeps runs in any of the comma-separated statuses (running, completed, failed,
+        /// cancelled).
+        /// </para>
+        /// <para>
+        /// <c>GET /automations/{id}/runs</c> (<c>automations.runs.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>, <c>status</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListAutomationRunsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/automations/{id}/runs", new[] { id })
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>, <c>status</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(id, page, options, ct),
+                query,
+                cancellationToken);
+    }
+
     /// <summary>The <c>broadcasts</c> operations.</summary>
     public sealed class BroadcastsResource
     {
@@ -504,6 +1040,65 @@ namespace BillionSend.Resources
             _api.RequestAsync(
                 new ApiCall("POST", "/broadcasts/{id}/cancel", new[] { id }),
                 options,
+                cancellationToken);
+
+        /// <summary>
+        /// List broadcast clicked links.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The links recipients clicked in a broadcast, most clicked first, from the statistics
+        /// (the same counts as `GET /emails/metrics/links`). Newest first, with cursor pagination:
+        /// `after` takes the last id of a page and pages toward older items, `before` takes the
+        /// first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
+        /// <c>GET /broadcasts/{id}/clicked-links</c> (<c>broadcasts.clickedLinks</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListBroadcastClickedLinksResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ClickedLinksAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/broadcasts/{id}/clicked-links", new[] { id })
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ClickedLinksAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ClickedLinksAllAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ClickedLinksAsync(id, page, options, ct),
+                query,
                 cancellationToken);
 
         /// <summary>
@@ -658,6 +1253,73 @@ namespace BillionSend.Resources
             CancellationToken cancellationToken = default) =>
             Pagination.IterateAsync(
                 (page, ct) => ListAsync(page, options, ct),
+                query,
+                cancellationToken);
+
+        /// <summary>
+        /// List broadcast recipients.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The recipients of a broadcast that had one outcome: `type` (required) is sent,
+        /// delivered, opened, clicked, bounced, complained, unsubscribed or suppressed. `email`
+        /// narrows to one address; `bounce_type` (permanent, transient or undetermined) narrows
+        /// bounces. Read from the delivery records, newest recipient first. Newest first, with
+        /// cursor pagination: `after` takes the last id of a page and pages toward older items,
+        /// `before` takes the first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
+        /// <c>GET /broadcasts/{id}/recipients</c> (<c>broadcasts.recipients</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters: <c>limit</c>, <c>after</c>, <c>before</c>,
+        /// <c>type</c> (<c>sent</c>, <c>delivered</c>, <c>opened</c>, <c>clicked</c>,
+        /// <c>bounced</c>, <c>complained</c>, <c>unsubscribed</c>, <c>suppressed</c>) (required),
+        /// <c>email</c>, <c>bounce_type</c> (<c>permanent</c>, <c>transient</c>,
+        /// <c>undetermined</c>).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListBroadcastRecipientsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> RecipientsAsync(
+            string id,
+            IReadOnlyDictionary<string, object?> query,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/broadcasts/{id}/recipients", new[] { id })
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="RecipientsAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters: <c>limit</c>, <c>after</c>, <c>before</c>,
+        /// <c>type</c> (<c>sent</c>, <c>delivered</c>, <c>opened</c>, <c>clicked</c>,
+        /// <c>bounced</c>, <c>complained</c>, <c>unsubscribed</c>, <c>suppressed</c>) (required),
+        /// <c>email</c>, <c>bounce_type</c> (<c>permanent</c>, <c>transient</c>,
+        /// <c>undetermined</c>).</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> RecipientsAllAsync(
+            string id,
+            IReadOnlyDictionary<string, object?> query,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => RecipientsAsync(id, page, options, ct),
                 query,
                 cancellationToken);
 
@@ -899,12 +1561,16 @@ namespace BillionSend.Resources
         {
             _api = api;
             Batch = new ContactsBatchResource(api);
+            Imports = new ContactsImportsResource(api);
             Segments = new ContactsSegmentsResource(api);
             Topics = new ContactsTopicsResource(api);
         }
 
         /// <summary>The <c>contacts.batch</c> operations.</summary>
         public ContactsBatchResource Batch { get; }
+
+        /// <summary>The <c>contacts.imports</c> operations.</summary>
+        public ContactsImportsResource Imports { get; }
 
         /// <summary>The <c>contacts.segments</c> operations.</summary>
         public ContactsSegmentsResource Segments { get; }
@@ -1121,7 +1787,7 @@ namespace BillionSend.Resources
         }
 
         /// <summary>
-        /// Create in bulk.
+        /// Create contacts in bulk.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -1198,7 +1864,7 @@ namespace BillionSend.Resources
                 cancellationToken);
 
         /// <summary>
-        /// Delete in bulk.
+        /// Delete contacts in bulk.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -1229,6 +1895,134 @@ namespace BillionSend.Resources
                     Body = body,
                 },
                 options,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>contacts.imports</c> operations.</summary>
+    public sealed class ContactsImportsResource
+    {
+        private readonly ApiClient _api;
+
+        internal ContactsImportsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Create a contact import.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Uploads a CSV (`multipart/form-data`; `column_map`, `segments` and `topics` are
+        /// JSON-encoded strings) and imports it in the background: poll Retrieve a contact import
+        /// for `status` and `counts`. A row with an invalid address, an address that can never
+        /// receive mail, or a value that does not fit its column type fails; with the plan's
+        /// contact cap reached, the rows that do not fit fail. A file that marks a row unsubscribed
+        /// only opts that contact out; an import never subscribes anyone who unsubscribed. At most
+        /// 5 imports can be queued or running per team.
+        /// </para>
+        /// <para>
+        /// <c>POST /contacts/imports</c> (<c>contacts.imports.create</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The form fields (<c>CreateContactImportForm</c>) by name: a <see
+        /// cref="FileUpload"/> becomes a file part, a string is sent as it is and anything else (an
+        /// object or a list) as its JSON text.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>CreateContactImportResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> CreateAsync(
+            IReadOnlyDictionary<string, object?> body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/contacts/imports", ApiCall.NoPath)
+                {
+                    Body = body,
+                    Multipart = true,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Retrieve a contact import.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>GET /contacts/imports/{id}</c> (<c>contacts.imports.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ContactImport</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/contacts/imports/{id}", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// List contact imports.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Newest first, with cursor pagination: `after` takes the last id of a page and pages
+        /// toward older items, `before` takes the first id and pages back toward newer ones. Ten
+        /// per page unless `limit` says otherwise; `status` filters.
+        /// </para>
+        /// <para>
+        /// <c>GET /contacts/imports</c> (<c>contacts.imports.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>, <c>status</c> (<c>queued</c>, <c>in_progress</c>,
+        /// <c>completed</c>, <c>failed</c>).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListContactImportsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/contacts/imports", ApiCall.NoPath)
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>, <c>status</c> (<c>queued</c>, <c>in_progress</c>,
+        /// <c>completed</c>, <c>failed</c>).</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(page, options, ct),
+                query,
                 cancellationToken);
     }
 
@@ -1265,6 +2059,65 @@ namespace BillionSend.Resources
             _api.RequestAsync(
                 new ApiCall("POST", "/contacts/{id}/segments/{segmentId}", new[] { id, segmentId }),
                 options,
+                cancellationToken);
+
+        /// <summary>
+        /// List contact segments.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The segments the contact is in: an explicit member row, or a match of the segment's
+        /// saved filter (the rule `GET /segments/{id}/contacts` uses). Newest first, with cursor
+        /// pagination: `after` takes the last id of a page and pages toward older items, `before`
+        /// takes the first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
+        /// <c>GET /contacts/{id}/segments</c> (<c>contacts.segments.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListSegmentsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/contacts/{id}/segments", new[] { id })
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(id, page, options, ct),
+                query,
                 cancellationToken);
 
         /// <summary>
@@ -1375,6 +2228,10 @@ namespace BillionSend.Resources
         /// </summary>
         /// <remarks>
         /// <para>
+        /// The account deliverability score over the last 30 days, its content and outcome parts,
+        /// your hard bounce and complaint rates, and your standing. BillionSend extension.
+        /// </para>
+        /// <para>
         /// <c>GET /deliverability</c> (<c>deliverability.get</c>)
         /// </para>
         /// </remarks>
@@ -1400,7 +2257,11 @@ namespace BillionSend.Resources
         internal DomainsResource(ApiClient api)
         {
             _api = api;
+            Claims = new DomainsClaimsResource(api);
         }
+
+        /// <summary>The <c>domains.claims</c> operations.</summary>
+        public DomainsClaimsResource Claims { get; }
 
         /// <summary>
         /// Create a domain.
@@ -1585,6 +2446,110 @@ namespace BillionSend.Resources
                 cancellationToken);
     }
 
+    /// <summary>The <c>domains.claims</c> operations.</summary>
+    public sealed class DomainsClaimsResource
+    {
+        private readonly ApiClient _api;
+
+        internal DomainsClaimsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Claim a domain.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Starts taking over a domain another team already holds (creating it answers 409 "domain
+        /// already registered"). The response carries a TXT record to publish at the domain; then
+        /// call Verify Domain Claim. Once the record is seen and the holder's safety checks pass
+        /// (`blocked_reason`), the holder's domain is removed and the team gets the domain as a new
+        /// one with its own DKIM key: fetch it with Retrieve Domain under the claim's `domain_id`,
+        /// publish its records and verify it. Nothing of the holder's data comes with it. A live
+        /// claim for the same name is returned as it stands; a claim lasts 7 days.
+        /// </para>
+        /// <para>
+        /// <c>POST /domains/claim</c> (<c>domains.claims.create</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The request body (<c>ClaimDomainRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>DomainClaim</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> CreateAsync(
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/domains/claim", ApiCall.NoPath)
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Retrieve a domain claim.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The claim for a placeholder domain id, as it stands. Poll it until `status` is
+        /// `completed`.
+        /// </para>
+        /// <para>
+        /// <c>GET /domains/{id}/claim</c> (<c>domains.claims.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>DomainClaim</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/domains/{id}/claim", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Verify a domain claim.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Looks for the TXT record, runs the safety checks and, when they pass, transfers the
+        /// domain: the answer is the claim as it stands, `completed` when the transfer went
+        /// through. A claim held back (`blocked`) is looked at again every few minutes by
+        /// BillionSend; calling again checks at once.
+        /// </para>
+        /// <para>
+        /// <c>POST /domains/{id}/claim/verify</c> (<c>domains.claims.verify</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>DomainClaim</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> VerifyAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/domains/{id}/claim/verify", new[] { id }),
+                options,
+                cancellationToken);
+    }
+
     /// <summary>The <c>emails</c> operations.</summary>
     public sealed class EmailsResource
     {
@@ -1593,9 +2558,13 @@ namespace BillionSend.Resources
         internal EmailsResource(ApiClient api)
         {
             _api = api;
+            Attachments = new EmailsAttachmentsResource(api);
             Metrics = new EmailsMetricsResource(api);
             Receiving = new EmailsReceivingResource(api);
         }
+
+        /// <summary>The <c>emails.attachments</c> operations.</summary>
+        public EmailsAttachmentsResource Attachments { get; }
 
         /// <summary>The <c>emails.metrics</c> operations.</summary>
         public EmailsMetricsResource Metrics { get; }
@@ -1607,6 +2576,11 @@ namespace BillionSend.Resources
         /// Send a batch of emails.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// Queue up to 100 emails in one request. With `x-batch-validation: strict` (the default)
+        /// one invalid email refuses the whole batch; with `permissive` the valid ones are queued
+        /// and each invalid one is reported by its index.
+        /// </para>
         /// <para>
         /// Always sent with an <c>Idempotency-Key</c>: <c>options.IdempotencyKey</c> when given,
         /// otherwise a new one for this call, so that its retries never send twice.
@@ -1711,6 +2685,10 @@ namespace BillionSend.Resources
         /// </summary>
         /// <remarks>
         /// <para>
+        /// The check results and score for one email. Answers 404 when the email has no insights.
+        /// BillionSend extension.
+        /// </para>
+        /// <para>
         /// <c>GET /emails/{id}/insights</c> (<c>emails.insights</c>)
         /// </para>
         /// </remarks>
@@ -1787,6 +2765,11 @@ namespace BillionSend.Resources
         /// </summary>
         /// <remarks>
         /// <para>
+        /// Queue one email for sending, now or at `scheduled_at` (up to 30 days ahead). `to`, `cc`
+        /// and `bcc` together hold at most 50 recipients. Retry with the same `Idempotency-Key` and
+        /// payload to get the original answer instead of a second email.
+        /// </para>
+        /// <para>
         /// Always sent with an <c>Idempotency-Key</c>: <c>options.IdempotencyKey</c> when given,
         /// otherwise a new one for this call, so that its retries never send twice.
         /// </para>
@@ -1812,6 +2795,69 @@ namespace BillionSend.Resources
                     Body = body,
                     Idempotent = true,
                 },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Share an email.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Creates a public link to view one sent email: its header lines and its body, nothing
+        /// else about the team or the email (no Bcc, no files to download). The link carries a
+        /// random token, expires after `expires_in` (48 hours at most, and by default) and can be
+        /// revoked earlier with `DELETE /emails/{id}/share`. Needs a full access key.
+        /// </para>
+        /// <para>
+        /// <c>POST /emails/{id}/share</c> (<c>emails.share</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="body">The request body (<c>ShareEmailRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type), or <see langword="null"/> to send none.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ShareEmailResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ShareAsync(
+            string id,
+            object? body = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/emails/{id}/share", new[] { id })
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Revoke an email's share links.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Ends every live share link of one sent email at once. BillionSend extension; the links
+        /// of other emails are not touched. Needs a full access key.
+        /// </para>
+        /// <para>
+        /// <c>DELETE /emails/{id}/share</c> (<c>emails.unshare</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>UnshareEmailResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UnshareAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("DELETE", "/emails/{id}/share", new[] { id }),
                 options,
                 cancellationToken);
 
@@ -1846,6 +2892,105 @@ namespace BillionSend.Resources
                 cancellationToken);
     }
 
+    /// <summary>The <c>emails.attachments</c> operations.</summary>
+    public sealed class EmailsAttachmentsResource
+    {
+        private readonly ApiClient _api;
+
+        internal EmailsAttachmentsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Get an attachment.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// One attachment's metadata and a signed download link valid for one hour. Needs a full
+        /// access key.
+        /// </para>
+        /// <para>
+        /// <c>GET /emails/{email_id}/attachments/{id}</c> (<c>emails.attachments.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="emailId"><c>email_id</c>.</param>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>GetSentAttachmentResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string emailId,
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/emails/{email_id}/attachments/{id}", new[] { emailId, id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// List attachments.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The attachments and inline parts of one sent email, each with a signed download link
+        /// valid for one hour; all of them unless `limit` is given. Needs a full access key. The
+        /// files come from the email's stored content, so they are gone once the content retention
+        /// period removed it (the list is then empty).
+        /// </para>
+        /// <para>
+        /// <c>GET /emails/{email_id}/attachments</c> (<c>emails.attachments.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="emailId"><c>email_id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListSentAttachmentsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            string emailId,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/emails/{email_id}/attachments", new[] { emailId })
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="emailId"><c>email_id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            string emailId,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(emailId, page, options, ct),
+                query,
+                cancellationToken);
+    }
+
     /// <summary>The <c>emails.metrics</c> operations.</summary>
     public sealed class EmailsMetricsResource
     {
@@ -1860,6 +3005,10 @@ namespace BillionSend.Resources
         /// Get opens by mail client.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// Opens in a date range by the mail client that fetched the images. Needs a full access
+        /// key.
+        /// </para>
         /// <para>
         /// <c>GET /emails/metrics/clients</c> (<c>emails.metrics.clients</c>)
         /// </para>
@@ -1889,6 +3038,10 @@ namespace BillionSend.Resources
         /// </summary>
         /// <remarks>
         /// <para>
+        /// Opens and clicks in a date range by the reader's country, with people and machines
+        /// counted apart. Needs a full access key.
+        /// </para>
+        /// <para>
         /// <c>GET /emails/metrics/countries</c> (<c>emails.metrics.countries</c>)
         /// </para>
         /// </remarks>
@@ -1916,6 +3069,11 @@ namespace BillionSend.Resources
         /// Get email metrics.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// Delivery statistics for a date range, by period, domain, email or broadcast: counts and
+        /// rates for sent, delivered, bounced, complained, opened and clicked. Needs a full access
+        /// key.
+        /// </para>
         /// <para>
         /// <c>GET /emails/metrics</c> (<c>emails.metrics</c>)
         /// </para>
@@ -1953,6 +3111,10 @@ namespace BillionSend.Resources
         /// Get clicks by link.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// Clicks in a date range by the link that was clicked, with people and machines counted
+        /// apart. Needs a full access key.
+        /// </para>
         /// <para>
         /// <c>GET /emails/metrics/links</c> (<c>emails.metrics.links</c>)
         /// </para>
@@ -1999,9 +3161,8 @@ namespace BillionSend.Resources
         /// <para>
         /// BillionSend extension: erases one received email now, its sealed content, inbox
         /// memberships and received secrets with it, and threads it leaves empty. Needs a full
-        /// access key that is not scoped to an inbox; for an MCP token, the owner or admin role.
-        /// Webhook payloads already sent keep their metadata until the payload retention strips
-        /// them.
+        /// access key that is not scoped to an inbox, from an owner, admin or developer. Webhook
+        /// payloads already sent keep their metadata until the payload retention strips them.
         /// </para>
         /// <para>
         /// <c>DELETE /emails/receiving/{id}</c> (<c>emails.receiving.delete</c>)
@@ -2346,6 +3507,233 @@ namespace BillionSend.Resources
                 cancellationToken);
     }
 
+    /// <summary>The <c>events</c> operations.</summary>
+    public sealed class EventsResource
+    {
+        private readonly ApiClient _api;
+
+        internal EventsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Create an event.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Defines a custom event: its name and, optionally, a payload schema (a flat map from key
+        /// to string, number, boolean or date). The definition is only used to check the payload of
+        /// `events.send`; automations match an event by name whether or not it is defined.
+        /// </para>
+        /// <para>
+        /// <c>POST /events</c> (<c>events.create</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The request body (<c>CreateEventRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>CreateEventResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> CreateAsync(
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/events", ApiCall.NoPath)
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Retrieve an event.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// By id or by name. A name with `/`, `%` or spaces goes through the path URL-encoded.
+        /// </para>
+        /// <para>
+        /// <c>GET /events/{id_or_name}</c> (<c>events.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="idOrName"><c>id_or_name</c>: The event's id or its name</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>Event</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string idOrName,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/events/{id_or_name}", new[] { idOrName }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// List events.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// The team's event definitions. Newest first, with cursor pagination: `after` takes the
+        /// last id of a page and pages toward older items, `before` takes the first id and pages
+        /// back toward newer ones.
+        /// </para>
+        /// <para>
+        /// <c>GET /events</c> (<c>events.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListEventsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/events", ApiCall.NoPath)
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(page, options, ct),
+                query,
+                cancellationToken);
+
+        /// <summary>
+        /// Delete an event.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Removes the definition, and with it the payload check. Automations match by name, so
+        /// they are not affected, and the name can still be sent.
+        /// </para>
+        /// <para>
+        /// <c>DELETE /events/{id_or_name}</c> (<c>events.remove</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="idOrName"><c>id_or_name</c>: The event's id or its name</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>RemoveEventResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> RemoveAsync(
+            string idOrName,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("DELETE", "/events/{id_or_name}", new[] { idOrName }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Send an event.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Records an event for a contact, given by `contact_id` or by `email` (exactly one). Every
+        /// enabled automation whose trigger is this event name starts a run for the contact, and
+        /// runs waiting for this event continue. The event is accepted whether or not it is defined
+        /// or any automation matches; when it is defined with a schema, the payload is checked
+        /// against it and each typed value is converted. A contact that does not exist yet is
+        /// created when an automation needs it. Retry with the same `Idempotency-Key` and the same
+        /// body to get the original answer instead of a second event.
+        /// </para>
+        /// <para>
+        /// Always sent with an <c>Idempotency-Key</c>: <c>options.IdempotencyKey</c> when given,
+        /// otherwise a new one for this call, so that its retries never send twice.
+        /// </para>
+        /// <para>
+        /// <c>POST /events/send</c> (<c>events.send</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The request body (<c>SendEventRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>SendEventResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> SendAsync(
+            object body,
+            IdempotentRequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/events/send", ApiCall.NoPath)
+                {
+                    Body = body,
+                    Idempotent = true,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Update an event.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Replaces the payload schema; `null` clears it. The name cannot change. Runs already
+        /// started are not affected: the schema is read only when an event is sent.
+        /// </para>
+        /// <para>
+        /// <c>PATCH /events/{id_or_name}</c> (<c>events.update</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="idOrName"><c>id_or_name</c>: The event's id or its name</param>
+        /// <param name="body">The request body (<c>UpdateEventRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>UpdateEventResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UpdateAsync(
+            string idOrName,
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("PATCH", "/events/{id_or_name}", new[] { idOrName })
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+    }
+
     /// <summary>The <c>inboxes</c> operations.</summary>
     public sealed class InboxesResource
     {
@@ -2630,7 +4018,10 @@ namespace BillionSend.Resources
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Hosted-agent settings. BillionSend runs no agent of its own, so an inbox never has one.
+        /// The instructions, tone and allowed actions saved for this inbox's agent; empty until a
+        /// first update. BillionSend stores these settings and runs no agent of its own: your own
+        /// agent reads them (an inbox-scoped key can read its inbox's) and acts on the inbox
+        /// through the API or MCP.
         /// </para>
         /// <para>
         /// <c>GET /inboxes/{inbox_id}/agent</c> (<c>inboxes.agent.get</c>)
@@ -2649,6 +4040,45 @@ namespace BillionSend.Resources
             CancellationToken cancellationToken = default) =>
             _api.RequestAsync(
                 new ApiCall("GET", "/inboxes/{inbox_id}/agent", new[] { inboxId }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Update agent settings.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Saves the instructions, tone and allowed actions of this inbox's agent. Send at least
+        /// one field; a field left out keeps its value, `null` clears instructions or tone, and
+        /// `actions` replaces the list. BillionSend stores these settings and runs no agent of its
+        /// own: your own agent reads them (an inbox-scoped key can read its inbox's) and acts on
+        /// the inbox through the API or MCP. Needs a developer role; an inbox-scoped key cannot
+        /// change them.
+        /// </para>
+        /// <para>
+        /// <c>PATCH /inboxes/{inbox_id}/agent</c> (<c>inboxes.agent.update</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="inboxId"><c>inbox_id</c>: The inbox ID or its email address, such as
+        /// support@example.com</param>
+        /// <param name="body">The request body (<c>UpdateInboxAgentRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>UpdateInboxAgentResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UpdateAsync(
+            string inboxId,
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("PATCH", "/inboxes/{inbox_id}/agent", new[] { inboxId })
+                {
+                    Body = body,
+                },
                 options,
                 cancellationToken);
     }
@@ -2915,12 +4345,11 @@ namespace BillionSend.Resources
         /// <remarks>
         /// <para>
         /// Sends the draft from the inbox address; the body is optional and only ever holds
-        /// `headers`, which are not supported yet (an empty value is fine), and an
-        /// `Idempotency-Key` is accepted. Answers the sent email's id. A draft waiting for approval
-        /// goes out only when a person or a team-wide full access key sends it (403
-        /// approval_required otherwise), and their send skips the inbox's rules but never the
-        /// team's limits or the shared domain's rules. An agent's send of a draft runs the rules
-        /// and may hold it (202).
+        /// `headers`, which are not supported (an empty value is fine), and an `Idempotency-Key` is
+        /// accepted. Answers the sent email's id. A draft waiting for approval goes out only when a
+        /// person or a team-wide full access key sends it (403 approval_required otherwise), and
+        /// their send skips the inbox's rules but never the team's limits or the shared domain's
+        /// rules. An agent's send of a draft runs the rules and may hold it (202).
         /// </para>
         /// <para>
         /// Always sent with an <c>Idempotency-Key</c>: <c>options.IdempotencyKey</c> when given,
@@ -3064,8 +4493,9 @@ namespace BillionSend.Resources
         /// <remarks>
         /// <para>
         /// BillionSend extension: the event stream of one inbox, as GET /inboxes/events, ending
-        /// when the inbox is deleted or expires. An inbox-scoped key may stream its own inbox,
-        /// without the events about held mail.
+        /// when the inbox is deleted or expires; it carries inbox.deleted and inbox.expired
+        /// whatever types names. An inbox-scoped key may stream its own inbox, without the events
+        /// about held mail.
         /// </para>
         /// <para>
         /// The stream ends (the loop finishes) after <c>inbox.deleted</c> or <c>inbox.expired</c>.
@@ -4045,6 +5475,195 @@ namespace BillionSend.Resources
                 cancellationToken);
     }
 
+    /// <summary>The <c>logs</c> operations.</summary>
+    public sealed class LogsResource
+    {
+        private readonly ApiClient _api;
+
+        internal LogsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Retrieve a log.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// One logged request with its JSON request and response bodies. Bodies were redacted when
+        /// stored: html, text and attachment data are size markers, tokens and secrets are
+        /// `[redacted]`. A caller acting as a person whose role lacks developer access gets null
+        /// bodies; an API key always gets them.
+        /// </para>
+        /// <para>
+        /// <c>GET /logs/{id}</c> (<c>logs.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>GetLogResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/logs/{id}", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// List request logs.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Newest first, with cursor pagination: `after` takes the last id of a page and pages
+        /// toward older items, `before` takes the first id and pages back toward newer ones. Every
+        /// authenticated request the team's keys and connected apps made, this one included; the
+        /// bodies come with Retrieve a log.
+        /// </para>
+        /// <para>
+        /// <c>GET /logs</c> (<c>logs.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListLogsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/logs", ApiCall.NoPath)
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(page, options, ct),
+                query,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>oauthGrants</c> operations.</summary>
+    public sealed class OauthGrantsResource
+    {
+        private readonly ApiClient _api;
+
+        internal OauthGrantsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// List OAuth grants.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Newest first, with cursor pagination: `after` takes the last id of a page and pages
+        /// toward older items, `before` takes the first id and pages back toward newer ones. The
+        /// apps connected to the team, MCP clients among them, that hold a grant in force.
+        /// </para>
+        /// <para>
+        /// <c>GET /oauth/grants</c> (<c>oauthGrants.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListOAuthGrantsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/oauth/grants", ApiCall.NoPath)
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(page, options, ct),
+                query,
+                cancellationToken);
+
+        /// <summary>
+        /// Revoke an OAuth grant.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Ends the grant with every token issued under it: access tokens stop working at once and
+        /// the app has to ask for consent again. The grant's holder may revoke it; otherwise the
+        /// caller needs owner or admin access, and an all-teams grant needs admin access to every
+        /// team its holder belongs to. The grant is deleted, so it is not listed afterwards.
+        /// </para>
+        /// <para>
+        /// <c>DELETE /oauth/grants/{id}</c> (<c>oauthGrants.revoke</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>RevokeOAuthGrantResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> RevokeAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("DELETE", "/oauth/grants/{id}", new[] { id }),
+                options,
+                cancellationToken);
+    }
+
     /// <summary>The <c>segments</c> operations.</summary>
     public sealed class SegmentsResource
     {
@@ -4440,7 +6059,7 @@ namespace BillionSend.Resources
         }
 
         /// <summary>
-        /// Add in bulk.
+        /// Add suppressions in bulk.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -4468,7 +6087,7 @@ namespace BillionSend.Resources
                 cancellationToken);
 
         /// <summary>
-        /// Remove in bulk.
+        /// Remove suppressions in bulk.
         /// </summary>
         /// <remarks>
         /// <para>
@@ -4885,29 +6504,6 @@ namespace BillionSend.Resources
                 cancellationToken);
 
         /// <summary>
-        /// Delete an unsubscribe.
-        /// </summary>
-        /// <remarks>
-        /// <para>
-        /// <c>DELETE /unsubscribes/{id}</c> (<c>unsubscribes.delete</c>)
-        /// </para>
-        /// </remarks>
-        /// <param name="id"><c>id</c>.</param>
-        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
-        /// <param name="cancellationToken">Cancels the call and its retries.</param>
-        /// <returns>The parsed JSON answer (<c>RemoveUnsubscribeResponse</c>).</returns>
-        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
-        /// the subclass tells which.</exception>
-        public Task<JsonNode?> DeleteAsync(
-            string id,
-            RequestOptions? options = null,
-            CancellationToken cancellationToken = default) =>
-            _api.RequestAsync(
-                new ApiCall("DELETE", "/unsubscribes/{id}", new[] { id }),
-                options,
-                cancellationToken);
-
-        /// <summary>
         /// List unsubscribes.
         /// </summary>
         /// <remarks>
@@ -4975,6 +6571,12 @@ namespace BillionSend.Resources
         /// Get usage.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// What the team uses against what its plan allows: emails (the UTC day and the billing
+        /// period), contacts, segments, broadcasts, domains and the API rate limit. BillionSend
+        /// adds `plan`, `inboxes`, `webhook_endpoints`, `verification` and the period's overage
+        /// fields. A limit nothing caps is null.
+        /// </para>
         /// <para>
         /// <c>GET /usage</c> (<c>usage.get</c>)
         /// </para>
@@ -5175,7 +6777,11 @@ namespace BillionSend.Resources
         internal WebhooksResource(ApiClient api)
         {
             _api = api;
+            Events = new WebhooksEventsResource(api);
         }
+
+        /// <summary>The <c>webhooks.events</c> operations.</summary>
+        public WebhooksEventsResource Events { get; }
 
         /// <summary>
         /// Create a webhook.
@@ -5316,7 +6922,7 @@ namespace BillionSend.Resources
         /// replaces the previous secret.
         /// </para>
         /// <para>
-        /// <c>POST /webhooks/{id}/rotate</c> (<c>webhooks.rotate</c>)
+        /// <c>POST /webhooks/{id}/signing-secret/rotate</c> (<c>webhooks.rotateSigningSecret</c>)
         /// </para>
         /// </remarks>
         /// <param name="id"><c>id</c>.</param>
@@ -5328,13 +6934,13 @@ namespace BillionSend.Resources
         /// <returns>The parsed JSON answer (<c>RotateWebhookSecretResponse</c>).</returns>
         /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
         /// the subclass tells which.</exception>
-        public Task<JsonNode?> RotateAsync(
+        public Task<JsonNode?> RotateSigningSecretAsync(
             string id,
             object? body = null,
             RequestOptions? options = null,
             CancellationToken cancellationToken = default) =>
             _api.RequestAsync(
-                new ApiCall("POST", "/webhooks/{id}/rotate", new[] { id })
+                new ApiCall("POST", "/webhooks/{id}/signing-secret/rotate", new[] { id })
                 {
                     Body = body,
                 },
@@ -5369,6 +6975,215 @@ namespace BillionSend.Resources
                     Body = body,
                 },
                 options,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>webhooks.events</c> operations.</summary>
+    public sealed class WebhooksEventsResource
+    {
+        private readonly ApiClient _api;
+
+        internal WebhooksEventsResource(ApiClient api)
+        {
+            _api = api;
+            Attempts = new WebhooksEventsAttemptsResource(api);
+        }
+
+        /// <summary>The <c>webhooks.events.attempts</c> operations.</summary>
+        public WebhooksEventsAttemptsResource Attempts { get; }
+
+        /// <summary>
+        /// Retrieve a webhook event.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>GET /webhooks/{id}/events/{event_id}</c> (<c>webhooks.events.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Webhook id</param>
+        /// <param name="eventId"><c>event_id</c>: Event id from the webhook's event list</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>GetWebhookEventResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string id,
+            string eventId,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/webhooks/{id}/events/{event_id}", new[] { id, eventId }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// List a webhook's events.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Every event the webhook was sent or is waiting to be sent, newest first. Newest first,
+        /// with cursor pagination: `after` takes the last id of a page and pages toward older
+        /// items, `before` takes the first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
+        /// <c>GET /webhooks/{id}/events</c> (<c>webhooks.events.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListWebhookEventsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/webhooks/{id}/events", new[] { id })
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(id, page, options, ct),
+                query,
+                cancellationToken);
+
+        /// <summary>
+        /// Replay a webhook event.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Posts the event again: a new event with the same payload and the same webhook-id, queued
+        /// like any other (signed, paced and retried the usual way). Returns the new event. Refused
+        /// with 422 for a webhook that is disabled and for an event whose payload the retention
+        /// window has emptied.
+        /// </para>
+        /// <para>
+        /// <c>POST /webhooks/{id}/events/{event_id}/replay</c> (<c>webhooks.events.replay</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Webhook id</param>
+        /// <param name="eventId"><c>event_id</c>: Event id from the webhook's event list</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ReplayWebhookEventResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ReplayAsync(
+            string id,
+            string eventId,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall(
+                    "POST",
+                    "/webhooks/{id}/events/{event_id}/replay",
+                    new[] { id, eventId }),
+                options,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>webhooks.events.attempts</c> operations.</summary>
+    public sealed class WebhooksEventsAttemptsResource
+    {
+        private readonly ApiClient _api;
+
+        internal WebhooksEventsAttemptsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// List an event's delivery attempts.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Every post made for the event, newest first. Newest first, with cursor pagination:
+        /// `after` takes the last id of a page and pages toward older items, `before` takes the
+        /// first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
+        /// <c>GET /webhooks/{id}/events/{event_id}/attempts</c>
+        /// (<c>webhooks.events.attempts.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>: Webhook id</param>
+        /// <param name="eventId"><c>event_id</c>: Event id from the webhook's event list</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListWebhookEventAttemptsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            string id,
+            string eventId,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall(
+                    "GET",
+                    "/webhooks/{id}/events/{event_id}/attempts",
+                    new[] { id, eventId })
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="eventId"><c>event_id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            string id,
+            string eventId,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(id, eventId, page, options, ct),
+                query,
                 cancellationToken);
     }
 }

@@ -240,7 +240,12 @@ namespace BillionSend.Internal
             }
 
             byte[]? body = null;
-            if (call.Body is not null)
+            string contentType = "application/json";
+            if (call.Body is not null && call.Multipart)
+            {
+                (body, contentType) = Multipart.Encode(call.Body, _json);
+            }
+            else if (call.Body is not null)
             {
                 body = JsonSerializer.SerializeToUtf8Bytes(call.Body, call.Body.GetType(), _json);
             }
@@ -269,6 +274,7 @@ namespace BillionSend.Internal
                 url,
                 headers,
                 body,
+                contentType,
                 keyed,
                 Retry.IdempotentMethods.Contains(call.Method) || keyed);
         }
@@ -279,7 +285,7 @@ namespace BillionSend.Internal
             if (prepared.Body is not null)
             {
                 request.Content = new ByteArrayContent(prepared.Body);
-                request.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                request.Content.Headers.ContentType = MediaTypeHeaderValue.Parse(prepared.ContentType);
             }
 
             foreach (var pair in prepared.Headers)
@@ -437,6 +443,7 @@ namespace BillionSend.Internal
             Uri Url,
             IReadOnlyDictionary<string, string> Headers,
             byte[]? Body,
+            string ContentType,
             bool Keyed,
             bool Retryable);
     }

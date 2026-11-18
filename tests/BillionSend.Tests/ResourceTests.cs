@@ -191,4 +191,100 @@ public sealed class ContractMockTests : MockTest
         Assert.Contains(violations, v => v.StartsWith("GET /nowhere: not an operation"));
         Mock.Reset();
     }
+
+    [Fact]
+    public async Task UploadsAFileAndFormFieldsAsMultipart()
+    {
+        using var client = Client();
+        var csv = "Email,First Name\nana@example.com,Ana\n";
+        var answer = await client.Contacts.Imports.CreateAsync(new Dictionary<string, object?>
+        {
+            ["file"] = new FileUpload("people.csv", System.Text.Encoding.UTF8.GetBytes(csv)),
+            ["column_map"] = new { email = "Email", first_name = "First Name" },
+            ["on_conflict"] = "skip",
+            ["segments"] = new[] { new { id = Id } },
+            ["topics"] = null,
+        });
+        var hit = Assert.Single(Mock.Hits);
+        Assert.StartsWith("multipart/form-data; boundary=", hit.Header("content-type"));
+        var form = ContractMock.ParseMultipart(hit.Header("content-type")!, hit.Body!, out var error);
+        Assert.Null(error);
+        Assert.Equal("people.csv", (string?)form!["file"]);
+        Assert.Contains(csv, hit.Body);
+        Assert.Contains("text/csv", hit.Body);
+        Assert.Equal("{\"email\":\"Email\",\"first_name\":\"First Name\"}", (string?)form["column_map"]);
+        Assert.Equal("skip", (string?)form["on_conflict"]);
+        Assert.Equal($"[{{\"id\":\"{Id}\"}}]", (string?)form["segments"]);
+        Assert.False(form.ContainsKey("topics"));
+        Assert.True(JsonNode.DeepEquals(hit.Response, answer));
+    }
+
+    [Fact]
+    public async Task ReadsAFileFromDiskForUpload()
+    {
+        var path = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid()}.csv");
+        await File.WriteAllTextAsync(path, "Email\nana@example.com\n");
+        try
+        {
+            var file = await FileUpload.FromFileAsync(path);
+            Assert.Equal(Path.GetFileName(path), file.FileName);
+            Assert.Equal("text/csv", file.ContentType);
+            Assert.Equal("Email\nana@example.com\n", System.Text.Encoding.UTF8.GetString(file.Content));
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task SendsTheRequiredQueryOfBroadcastRecipientsAndPagesThem()
+    {
+        using var client = Client();
+        await client.Broadcasts.RecipientsAsync(Id, new Dictionary<string, object?> { ["type"] = "clicked", ["limit"] = 50 });
+        var hit = Assert.Single(Mock.Hits);
+        Assert.Equal("clicked", hit.Query["type"]);
+        Assert.Equal("50", hit.Query["limit"]);
+        Mock.Reset();
+        Mock.Reply("GET /broadcasts/{id}/recipients", 200, new JsonObject
+        {
+            ["object"] = "list",
+            ["has_more"] = false,
+            ["data"] = new JsonArray(),
+        });
+        var seen = 0;
+        await foreach (var _ in client.Broadcasts.RecipientsAllAsync(Id, new Dictionary<string, object?> { ["type"] = "bounced" }))
+        {
+            seen++;
+        }
+
+        Assert.Equal(0, seen);
+        Assert.Equal("bounced", Assert.Single(Mock.Hits).Query["type"]);
+    }
+
+    [Fact]
+    public async Task ReturnsTheCurrentUsageShape()
+    {
+        using var client = Client();
+        Mock.Reply("GET /usage", 200, new JsonObject
+        {
+            ["object"] = "usage",
+            ["emails"] = new JsonObject
+            {
+                ["daily"] = new JsonObject { ["used"] = 3, ["limit"] = 100, ["sent"] = 3, ["received"] = 0, ["resets_at"] = "2026-11-20T00:00:00.000Z" },
+            },
+        });
+        var usage = await client.Usage.GetAsync();
+        Assert.Equal(3, (int?)usage!["emails"]!["daily"]!["used"]);
+        Assert.Equal(100, (int?)usage["emails"]!["daily"]!["limit"]);
+        Assert.Null(usage["limits"]);
+    }
+
+    [Fact]
+    public void HasNoMethodsForTheOperationsTheApiDropped()
+    {
+        Assert.Null(typeof(BillionSend.Resources.UnsubscribesResource).GetMethod("DeleteAsync"));
+        Assert.Null(typeof(BillionSend.Resources.WebhooksResource).GetMethod("RotateAsync"));
+        Assert.NotNull(typeof(BillionSend.Resources.WebhooksResource).GetMethod("RotateSigningSecretAsync"));
+    }
 }

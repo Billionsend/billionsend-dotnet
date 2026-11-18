@@ -10,6 +10,7 @@ Usage::
 
     python3 scripts/sync_openapi.py                  # fetch the published document
     python3 scripts/sync_openapi.py --from path.json # copy a local document
+    python3 scripts/sync_openapi.py --check          # fail if the snapshot differs from the published document
 
 Free-text ``description`` / ``summary`` strings that name other products are
 dropped from the snapshot (they carry no contract), so the repository only ever
@@ -30,9 +31,7 @@ DEFAULT_URL = "https://billionsend.com/docs/api.openapi.json"
 SNAPSHOT = Path(__file__).resolve().parent.parent / "openapi" / "api.openapi.json"
 
 # Names of other products that must not appear in this repository.
-FOREIGN_NAMES = re.compile(
-    r"\b(?:" + "|".join(["Re" + "send", "Sv" + "ix"]) + r")\b", re.IGNORECASE
-)
+FOREIGN_NAMES = re.compile("|".join(["Re" + "send", "Sv" + "ix"]), re.IGNORECASE)
 TEXT_KEYS = {"description", "summary"}
 HTTP_METHODS = {"get", "put", "post", "patch", "delete", "head", "options"}
 
@@ -62,7 +61,10 @@ def sanitize(node: Any) -> tuple[Any, int]:
 def load(source: str | None) -> Any:
     if source:
         return json.loads(Path(source).read_text(encoding="utf-8"))
-    request = urllib.request.Request(DEFAULT_URL, headers={"Accept": "application/json"})
+    request = urllib.request.Request(
+        DEFAULT_URL,
+        headers={"Accept": "application/json", "User-Agent": "billionsend-dotnet-sync"},
+    )
     with urllib.request.urlopen(request, timeout=30) as response:  # noqa: S310 - fixed https URL
         return json.loads(response.read().decode("utf-8"))
 
@@ -72,14 +74,31 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--from", dest="source", help="local OpenAPI document instead of the published one"
     )
+    parser.add_argument(
+        "--check",
+        action="store_true",
+        help="write nothing; fail if the snapshot differs from the document",
+    )
     args = parser.parse_args(argv)
 
     document, dropped = sanitize(load(args.source))
     if not str(document.get("openapi", "")).startswith("3.1"):
         print(f"expected OpenAPI 3.1, got {document.get('openapi')!r}", file=sys.stderr)
         return 1
+    text = json.dumps(document, indent=2, ensure_ascii=False) + "\n"
+    if args.check:
+        current = SNAPSHOT.read_text(encoding="utf-8") if SNAPSHOT.exists() else None
+        if current != text:
+            print(
+                f"{SNAPSHOT.name} differs from the published document: "
+                "run `python3 scripts/sync_openapi.py`, then `python3 scripts/generate.py`",
+                file=sys.stderr,
+            )
+            return 1
+        print(f"{SNAPSHOT.name} matches the published document")
+        return 0
     SNAPSHOT.parent.mkdir(parents=True, exist_ok=True)
-    SNAPSHOT.write_text(json.dumps(document, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    SNAPSHOT.write_text(text, encoding="utf-8")
     operations = sum(
         1 for item in document["paths"].values() for method in item if method in HTTP_METHODS
     )

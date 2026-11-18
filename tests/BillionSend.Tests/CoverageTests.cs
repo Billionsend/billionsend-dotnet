@@ -149,19 +149,60 @@ public sealed class CoverageTests : MockTest
         ["PATCH /topics/{id}"] = c => J(c.Topics.UpdateAsync(Id, null)),
         ["GET /unsubscribes"] = c => J(c.Unsubscribes.ListAsync(Q(("domain_id", Id)))),
         ["POST /unsubscribes"] = c => J(c.Unsubscribes.CreateAsync(Body("POST /unsubscribes"))),
-        ["DELETE /unsubscribes/{id}"] = c => J(c.Unsubscribes.DeleteAsync(Id)),
         ["GET /usage"] = c => J(c.Usage.GetAsync()),
         ["GET /verifications"] = c => J(c.Verifications.ListAsync()),
         ["POST /verifications"] = c => J(c.Verifications.CreateAsync(Body("POST /verifications"))),
         ["GET /verifications/availability"] = c => J(c.Verifications.AvailabilityAsync()),
         ["POST /verifications/estimate"] = c => J(c.Verifications.EstimateAsync(Body("POST /verifications/estimate"))),
         ["GET /verifications/{id}"] = c => J(c.Verifications.GetAsync(Id)),
+        ["GET /automations"] = c => J(c.Automations.ListAsync(Q(("status", "enabled"), ("limit", 5)))),
+        ["POST /automations"] = c => J(c.Automations.CreateAsync(Body("POST /automations"))),
+        ["POST /automations/validate"] = c => J(c.Automations.ValidateAsync(Body("POST /automations/validate"))),
+        ["DELETE /automations/{id}"] = c => J(c.Automations.RemoveAsync(Id)),
+        ["GET /automations/{id}"] = c => J(c.Automations.GetAsync(Id)),
+        ["PATCH /automations/{id}"] = c => J(c.Automations.UpdateAsync(Id, Body("PATCH /automations/{id}"))),
+        ["POST /automations/{id}/duplicate"] = c => J(c.Automations.DuplicateAsync(Id)),
+        ["GET /automations/{id}/metrics"] = c => J(c.Automations.MetricsAsync(Id, Q(("start_date", "2026-11-01"), ("end_date", "2026-11-18")))),
+        ["GET /automations/{id}/runs"] = c => J(c.Automations.Runs.ListAsync(Id, Q(("status", "running")))),
+        ["GET /automations/{id}/runs/{run_id}"] = c => J(c.Automations.Runs.GetAsync(Id, Id2)),
+        ["POST /automations/{id}/runs/{run_id}/cancel"] = c => J(c.Automations.Runs.CancelAsync(Id, Id2)),
+        ["POST /automations/{id}/simulate"] = c => J(c.Automations.SimulateAsync(Id, Body("POST /automations/{id}/simulate"))),
+        ["POST /automations/{id}/stop"] = c => J(c.Automations.StopAsync(Id)),
+        ["PATCH /api-keys/{id}"] = c => J(c.ApiKeys.UpdateAsync(Id, Body("PATCH /api-keys/{id}"))),
+        ["GET /broadcasts/{id}/clicked-links"] = c => J(c.Broadcasts.ClickedLinksAsync(Id)),
+        ["GET /broadcasts/{id}/recipients"] = c => J(c.Broadcasts.RecipientsAsync(Id, Q(("type", "clicked"), ("bounce_type", "permanent")))),
+        ["GET /contacts/imports"] = c => J(c.Contacts.Imports.ListAsync(Q(("status", "completed")))),
+        ["POST /contacts/imports"] = c => J(c.Contacts.Imports.CreateAsync(ImportForm())),
+        ["GET /contacts/imports/{id}"] = c => J(c.Contacts.Imports.GetAsync(Id)),
+        ["GET /contacts/{id}/segments"] = c => J(c.Contacts.Segments.ListAsync(Id)),
+        ["POST /domains/claim"] = c => J(c.Domains.Claims.CreateAsync(Body("POST /domains/claim"))),
+        ["GET /domains/{id}/claim"] = c => J(c.Domains.Claims.GetAsync(Id)),
+        ["POST /domains/{id}/claim/verify"] = c => J(c.Domains.Claims.VerifyAsync(Id)),
+        ["GET /emails/{email_id}/attachments"] = c => J(c.Emails.Attachments.ListAsync(Id)),
+        ["GET /emails/{email_id}/attachments/{id}"] = c => J(c.Emails.Attachments.GetAsync(Id, Id2)),
+        ["POST /emails/{id}/share"] = c => J(c.Emails.ShareAsync(Id, null)),
+        ["DELETE /emails/{id}/share"] = c => J(c.Emails.UnshareAsync(Id)),
+        ["GET /events"] = c => J(c.Events.ListAsync()),
+        ["POST /events"] = c => J(c.Events.CreateAsync(Body("POST /events"))),
+        ["POST /events/send"] = c => J(c.Events.SendAsync(Body("POST /events/send"), new IdempotentRequestOptions { IdempotencyKey = "ev-1" })),
+        ["DELETE /events/{id_or_name}"] = c => J(c.Events.RemoveAsync("order.paid")),
+        ["GET /events/{id_or_name}"] = c => J(c.Events.GetAsync("order.paid")),
+        ["PATCH /events/{id_or_name}"] = c => J(c.Events.UpdateAsync("order.paid", Body("PATCH /events/{id_or_name}"))),
+        ["PATCH /inboxes/{inbox_id}/agent"] = c => J(c.Inboxes.Agent.UpdateAsync(Inbox, Body("PATCH /inboxes/{inbox_id}/agent"))),
+        ["GET /logs"] = c => J(c.Logs.ListAsync(Q(("limit", 5)))),
+        ["GET /logs/{id}"] = c => J(c.Logs.GetAsync(Id)),
+        ["GET /oauth/grants"] = c => J(c.OauthGrants.ListAsync()),
+        ["DELETE /oauth/grants/{id}"] = c => J(c.OauthGrants.RevokeAsync(Id)),
+        ["POST /webhooks/{id}/signing-secret/rotate"] = c => J(c.Webhooks.RotateSigningSecretAsync(Id, null)),
+        ["GET /webhooks/{id}/events"] = c => J(c.Webhooks.Events.ListAsync(Id)),
+        ["GET /webhooks/{id}/events/{event_id}"] = c => J(c.Webhooks.Events.GetAsync(Id, Id2)),
+        ["POST /webhooks/{id}/events/{event_id}/replay"] = c => J(c.Webhooks.Events.ReplayAsync(Id, Id2)),
+        ["GET /webhooks/{id}/events/{event_id}/attempts"] = c => J(c.Webhooks.Events.Attempts.ListAsync(Id, Id2)),
         ["GET /webhooks"] = c => J(c.Webhooks.ListAsync()),
         ["POST /webhooks"] = c => J(c.Webhooks.CreateAsync(Body("POST /webhooks"))),
         ["DELETE /webhooks/{id}"] = c => J(c.Webhooks.DeleteAsync(Id)),
         ["GET /webhooks/{id}"] = c => J(c.Webhooks.GetAsync(Id)),
         ["PATCH /webhooks/{id}"] = c => J(c.Webhooks.UpdateAsync(Id, null)),
-        ["POST /webhooks/{id}/rotate"] = c => J(c.Webhooks.RotateAsync(Id, null)),
     };
 
     public static TheoryData<string, bool> Keys()
@@ -179,7 +220,7 @@ public sealed class CoverageTests : MockTest
     [Fact]
     public void HasExactlyOneCallPerOperationOfTheSnapshot()
     {
-        Assert.Equal(139, Spec.OperationKeys.Count);
+        Assert.Equal(180, Spec.OperationKeys.Count);
         Assert.Empty(Spec.OperationKeys.Except(Calls.Keys).Order());
         Assert.Empty(Calls.Keys.Except(Spec.OperationKeys).Order());
     }
@@ -201,7 +242,7 @@ public sealed class CoverageTests : MockTest
     {
         var client = Client();
         var lists = Spec.Operations.Where(op => op.Paginated).ToList();
-        Assert.Equal(21, lists.Count);
+        Assert.Equal(33, lists.Count);
         var missing = lists
             .Where(op => FindMethod(client, op.OperationId, "AllAsync") is not { } method ||
                 method.ReturnType != typeof(IAsyncEnumerable<JsonNode>))
@@ -247,7 +288,7 @@ public sealed class CoverageTests : MockTest
         Assert.Equal(Calls.Count, Mock.Hits.Count);
         Assert.Empty(Spec.OperationKeys.Except(reached).Order());
         Assert.Empty(reached.Except(Spec.OperationKeys).Order());
-        Assert.Equal(139, reached.Count);
+        Assert.Equal(180, reached.Count);
     }
 
     private static MethodInfo? FindMethod(BillionSendClient client, string operationId, string suffix)
@@ -270,6 +311,16 @@ public sealed class CoverageTests : MockTest
     }
 
     private static string Pascal(string name) => char.ToUpperInvariant(name[0]) + name[1..];
+
+    // The CSV import is a multipart form: the file, a JSON-text column map and plain fields.
+    private static Dictionary<string, object?> ImportForm() => new()
+    {
+        ["file"] = new FileUpload("people.csv", System.Text.Encoding.UTF8.GetBytes("Email,First Name\nana@example.com,Ana\n")),
+        ["column_map"] = new { email = "Email", first_name = "First Name" },
+        ["on_conflict"] = "skip",
+        ["segments"] = new[] { new { id = Id } },
+        ["topics"] = new[] { new { id = Id2, subscription = "opt_in" } },
+    };
 
     private static Dictionary<string, object?> Q(params (string Key, object? Value)[] pairs) =>
         pairs.ToDictionary(pair => pair.Key, pair => pair.Value);

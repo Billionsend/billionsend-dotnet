@@ -45,6 +45,20 @@ internal static class ReadmeExamples
         Console.WriteLine(signup["inbox"]?["email_address"]);
     }
 
+    public static async Task ImportContacts(BillionSendClient client)
+    {
+        var file = await FileUpload.FromFileAsync("people.csv");
+        var queued = await client.Contacts.Imports.CreateAsync(new Dictionary<string, object?>
+        {
+            ["file"] = file,
+            ["column_map"] = new { email = "Email", first_name = "First Name" },
+            ["on_conflict"] = "skip",
+        });
+
+        var import = await client.Contacts.Imports.GetAsync((string)queued!["id"]!);
+        Console.WriteLine($"{import!["status"]}");
+    }
+
     public static async Task RequestsAndAnswers(BillionSendClient client)
     {
         var page = await client.Emails.Receiving.ListAsync(new Dictionary<string, object?>

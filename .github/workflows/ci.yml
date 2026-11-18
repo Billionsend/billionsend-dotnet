@@ -3,6 +3,8 @@ name: CI
 on:
   push:
   pull_request:
+  schedule:
+    - cron: "17 6 * * *"
 
 permissions:
   contents: read
@@ -16,6 +18,8 @@ jobs:
       - uses: actions/setup-dotnet@0f4a354dd5547a28c70b7853dbd95d5b67886e73 # v6.1.0
         with:
           global-json-file: global.json
+      - name: The snapshot is the published OpenAPI document
+        run: python3 scripts/sync_openapi.py --check
       - name: Generated code matches the OpenAPI snapshot
         run: python3 scripts/generate.py --check
       - run: dotnet restore

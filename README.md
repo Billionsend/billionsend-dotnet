@@ -82,6 +82,23 @@ foreach (var email in page!["data"]!.AsArray())
 }
 ```
 
+## Import contacts from a CSV
+
+`Contacts.Imports.CreateAsync` uploads a file as `multipart/form-data`. The body is a dictionary of form fields: a `FileUpload` becomes the file part, a string is sent as it is, and an object or a list (the column map, the segments, the topics) is sent as its JSON text, which is how the API takes them. The import runs in the background; poll `Contacts.Imports.GetAsync` for its `status` and `counts`:
+
+```csharp
+var file = await FileUpload.FromFileAsync("people.csv");
+var queued = await client.Contacts.Imports.CreateAsync(new Dictionary<string, object?>
+{
+    ["file"] = file,
+    ["column_map"] = new { email = "Email", first_name = "First Name" },
+    ["on_conflict"] = "skip",
+});
+
+var import = await client.Contacts.Imports.GetAsync((string)queued!["id"]!);
+Console.WriteLine($"{import!["status"]}");
+```
+
 ## Send once: idempotency
 
 The sending operations (`Emails.SendAsync`, `Emails.BatchAsync`, `Emails.Receiving.ReplyAsync` / `ForwardAsync`, `Inboxes.SendAsync`, `Inboxes.Drafts.SendAsync`, `Inboxes.Threads.Emails.ReplyAsync` / `ForwardAsync`) always send an `Idempotency-Key` header. Without your own, each call gets a new random key (a UUID) and that call's retries reuse it, so a retry after a timeout cannot send twice. Pass your own key to make a send safe across calls and processes too; a repeat with the same key and payload returns the first result:
@@ -238,7 +255,7 @@ await client.Emails.SendAsync(message, new IdempotentRequestOptions { MaxRetries
 
 ## Verify webhooks
 
-Every webhook delivery is signed with the endpoint's `whsec_` secret (shown when you create the endpoint, and by `Webhooks.RotateAsync`). `Webhook.Verify` checks the signature and the timestamp (within 5 minutes by default, so a captured delivery cannot be replayed) and returns the parsed event; anything wrong throws a `WebhookVerificationException`. Pass the body exactly as it arrived, before any JSON parsing. In ASP.NET Core:
+Every webhook delivery is signed with the endpoint's `whsec_` secret (shown when you create the endpoint, and by `Webhooks.RotateSigningSecretAsync`). `Webhook.Verify` checks the signature and the timestamp (within 5 minutes by default, so a captured delivery cannot be replayed) and returns the parsed event; anything wrong throws a `WebhookVerificationException`. Pass the body exactly as it arrived, before any JSON parsing. In ASP.NET Core:
 
 ```csharp
 app.MapPost("/webhooks/billionsend", async (HttpRequest request) =>
@@ -284,22 +301,26 @@ Every method takes a `RequestOptions` (or its subclass for that operation) with 
 
 | Property | Covers |
 | --- | --- |
-| `Emails` | send, batch, list, get, update, cancel, delete, insights |
+| `Emails` | send, batch, list, get, update, cancel, delete, insights, share, unshare, `Attachments` (list, get) |
 | `Emails.Metrics` | `GetAsync` (the `emails.metrics` operation), links, countries, clients |
 | `Emails.Receiving` | received mail: list, get, delete, reply, forward, `Attachments` (list, get, text) |
-| `Domains` | create, list, get, update, delete, verify |
-| `ApiKeys` | create, list, delete |
-| `Contacts` | create, list, get, update, delete, preferences link, `Batch`, `Topics`, `Segments` |
+| `Domains` | create, list, get, update, delete, verify, `Claims` (create, get, verify) |
+| `ApiKeys` | create, list, update, delete |
+| `Contacts` | create, list, get, update, delete, preferences link, `Batch`, `Topics`, `Segments` (list, add, remove), `Imports` (create, list, get) |
 | `Audiences.Contacts` | contacts addressed through an audience |
 | `ContactProperties`, `Segments`, `Topics` | create, list, get, update, delete (segment contacts under `Segments.Contacts`) |
-| `Broadcasts` | create, list, get, update, delete, send, duplicate, cancel |
+| `Broadcasts` | create, list, get, update, delete, send, duplicate, cancel, recipients, clicked links |
 | `Templates` | create, list, get, update, delete, publish, duplicate |
-| `Webhooks` | create, list, get, update, delete, rotate |
+| `Webhooks` | create, list, get, update, delete, rotate signing secret, `Events` (list, get, replay, `Attempts`) |
+| `Automations` | create, list, get, update, remove, validate, duplicate, simulate, stop, metrics, `Runs` (list, get, cancel) |
+| `Events` | create, list, get, update, remove, send (custom events that start automations) |
 | `Suppressions` | create, list, get, delete, `Batch` add / remove |
-| `Unsubscribes` | create, list, delete |
+| `Unsubscribes` | create, list |
 | `Verifications` | availability, estimate, create, list, get |
 | `Usage`, `Deliverability` | get |
-| `Inboxes` | create, list, get, update, delete, send, `Agent`, `Safety`, `Labels`, `Threads` (search, labels, emails, reply, forward), `Quarantine`, `Codes`, `Drafts`, `Events` |
+| `Logs` | list, get |
+| `OauthGrants` | list, revoke |
+| `Inboxes` | create, list, get, update, delete, send, `Agent` (get, update), `Safety`, `Labels`, `Threads` (search, labels, emails, reply, forward), `Quarantine`, `Codes`, `Drafts`, `Events` |
 | `Agent` | signup, status, claim email |
 
 Each method's documentation names the API schema of its body and answer (`SendEmailRequest`, `Inbox`, …), described in the [API reference](https://billionsend.com/docs).

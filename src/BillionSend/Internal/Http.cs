@@ -31,6 +31,9 @@ namespace BillionSend.Internal
         /// <summary>The JSON body, or <see langword="null"/> for none.</summary>
         public object? Body { get; init; }
 
+        /// <summary>The body is a <c>multipart/form-data</c> form: a dictionary of fields and files.</summary>
+        public bool Multipart { get; init; }
+
         public IReadOnlyDictionary<string, object?>? Query { get; init; }
 
         /// <summary>The operation honours <c>Idempotency-Key</c>: one is always sent.</summary>

@@ -302,6 +302,57 @@ public sealed class ContractMock : HttpMessageHandler
         return (best, bestParams);
     }
 
+    /// <summary>
+    /// A multipart body as an object of its fields: text parts by their text, a file part by its
+    /// file name (a <c>format: binary</c> string in the schema).
+    /// </summary>
+    public static JsonObject? ParseMultipart(string contentType, string body, out string? error)
+    {
+        error = null;
+        var match = System.Text.RegularExpressions.Regex.Match(contentType, "boundary=\"?([^\";]+)\"?");
+        if (!match.Success)
+        {
+            error = "multipart body without a boundary";
+            return null;
+        }
+
+        var delimiter = "--" + match.Groups[1].Value;
+        var form = new JsonObject();
+        foreach (var part in body.Split(delimiter).Skip(1))
+        {
+            if (part.StartsWith("--"))
+            {
+                break;
+            }
+
+            var split = part.IndexOf("\r\n\r\n", StringComparison.Ordinal);
+            if (split == -1)
+            {
+                error = "a multipart part without headers";
+                return null;
+            }
+
+            var disposition = part[..split];
+            var name = System.Text.RegularExpressions.Regex.Match(disposition, "[; ]name=\"?([^\";\r\n]*)\"?");
+            var file = System.Text.RegularExpressions.Regex.Match(disposition, "filename=\"?([^\";\r\n]*)\"?");
+            if (!name.Success)
+            {
+                error = "a multipart part without a name";
+                return null;
+            }
+
+            var content = part[(split + 4)..];
+            if (content.EndsWith("\r\n"))
+            {
+                content = content[..^2];
+            }
+
+            form[name.Groups[1].Value] = file.Success ? file.Groups[1].Value : content;
+        }
+
+        return form;
+    }
+
     private static IEnumerable<string> Check(
         Operation operation,
         IReadOnlyDictionary<string, string> headers,
@@ -415,9 +466,27 @@ public sealed class ContractMock : HttpMessageHandler
             yield break;
         }
 
-        if (!headers.TryGetValue("content-type", out var contentType) || !contentType.StartsWith("application/json"))
+        var expectedType = operation.Multipart ? "multipart/form-data" : "application/json";
+        if (!headers.TryGetValue("content-type", out var contentType) || !contentType.StartsWith(expectedType))
         {
-            yield return $"body sent as {contentType}";
+            yield return $"body sent as {contentType}, expected {expectedType}";
+        }
+
+        if (operation.Multipart)
+        {
+            var form = ParseMultipart(contentType ?? string.Empty, body, out var formError);
+            if (formError is not null)
+            {
+                yield return formError;
+                yield break;
+            }
+
+            foreach (var error in Spec.Validate(form, operation.RequestSchema, "form"))
+            {
+                yield return error;
+            }
+
+            yield break;
         }
 
         JsonNode? json;

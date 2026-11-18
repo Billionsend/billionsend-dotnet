@@ -119,6 +119,7 @@ class Param:
     description: str
     enum: list[str] | None = None
     array: bool = False
+    required: bool = False
 
 
 @dataclass
@@ -132,9 +133,11 @@ class Operation:
     description: str
     path_params: list[Param] = field(default_factory=list)
     query_params: list[Param] = field(default_factory=list)
+    query_required: bool = False
     body: bool = False
     body_required: bool = False
     body_schema: str | None = None
+    multipart: bool = False
     response_schema: str | None = None
     idempotent: bool = False
     batch_validation: bool = False
@@ -227,8 +230,8 @@ class Spec:
             if where == "path":
                 o.path_params.append(param)
             elif where == "query":
-                if p.get("required"):
-                    raise SystemExit(f"{method} {path}: required query parameter {name}")
+                param.required = bool(p.get("required"))
+                o.query_required = o.query_required or param.required
                 o.query_params.append(param)
             else:
                 raise SystemExit(f"{method} {path}: unhandled parameter location {where}")
@@ -240,11 +243,12 @@ class Spec:
         body = op.get("requestBody")
         if body:
             content = body.get("content", {})
-            if list(content) != ["application/json"]:
+            if list(content) not in (["application/json"], ["multipart/form-data"]):
                 raise SystemExit(f"{method} {path}: unhandled request body {list(content)}")
             o.body = True
+            o.multipart = "multipart/form-data" in content
             o.body_required = bool(body.get("required"))
-            o.body_schema = self.ref_name(content["application/json"].get("schema"))
+            o.body_schema = self.ref_name(next(iter(content.values())).get("schema"))
 
         success = [(c, r) for c, r in sorted(op["responses"].items()) if c.startswith("2")]
         if any("text/event-stream" in r.get("content", {}) for _, r in success):
@@ -295,9 +299,15 @@ def query_doc(op: Operation) -> str:
             text += " (" + ", ".join(code(v) for v in q.enum) + ")"
         if q.array:
             text += " (a list, sent comma-separated)"
+        if q.required:
+            text += " (required)"
         parts.append(text)
     return (
-        "Query parameters, or <see langword=\"null\"/>: " + ", ".join(parts) + "."
+        "Query parameters"
+        + ("" if op.query_required else ", or <see langword=\"null\"/>")
+        + ": "
+        + ", ".join(parts)
+        + "."
         if parts
         else ""
     )
@@ -306,9 +316,20 @@ def query_doc(op: Operation) -> str:
 def signature(op: Operation, *, paginator: bool = False) -> list[str]:
     args = [f"string {p.cs}" for p in op.path_params]
     if op.body and not paginator:
-        args.append("object body" if op.body_required else "object? body = null")
+        if op.multipart:
+            args.append(
+                "IReadOnlyDictionary<string, object?> body"
+                if op.body_required
+                else "IReadOnlyDictionary<string, object?>? body = null"
+            )
+        else:
+            args.append("object body" if op.body_required else "object? body = null")
     if op.query_params:
-        args.append("IReadOnlyDictionary<string, object?>? query = null")
+        args.append(
+            "IReadOnlyDictionary<string, object?> query"
+            if op.query_required
+            else "IReadOnlyDictionary<string, object?>? query = null"
+        )
     args.append(f"{options_type(op)}? options = null")
     args.append("CancellationToken cancellationToken = default")
     return args
@@ -347,12 +368,20 @@ def method_docs(op: Operation, indent: str) -> list[str]:
     if op.body:
         schema = f" ({code(op.body_schema)})" if op.body_schema else ""
         optional = "" if op.body_required else ", or <see langword=\"null\"/> to send none"
-        lines += doc_lines(
-            f'<param name="body">The request body{schema}: any object that serializes to it '
-            f"(a <see cref=\"JsonNode\"/>, a dictionary, an anonymous object or your own "
-            f"type){optional}.</param>",
-            indent,
-        )
+        if op.multipart:
+            lines += doc_lines(
+                f'<param name="body">The form fields{schema} by name: a '
+                f'<see cref="FileUpload"/> becomes a file part, a string is sent as it is and '
+                f"anything else (an object or a list) as its JSON text{optional}.</param>",
+                indent,
+            )
+        else:
+            lines += doc_lines(
+                f'<param name="body">The request body{schema}: any object that serializes to it '
+                f"(a <see cref=\"JsonNode\"/>, a dictionary, an anonymous object or your own "
+                f"type){optional}.</param>",
+                indent,
+            )
     if op.query_params:
         lines += doc_lines(f'<param name="query">{query_doc(op)}</param>', indent)
     lines += doc_lines(
@@ -386,6 +415,8 @@ def call_lines(op: Operation, indent: str) -> list[str]:
     init: list[str] = []
     if op.body:
         init.append("Body = body")
+        if op.multipart:
+            init.append("Multipart = true")
     if op.query_params:
         init.append("Query = query")
     if op.idempotent:

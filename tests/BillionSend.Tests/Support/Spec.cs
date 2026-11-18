@@ -30,7 +30,10 @@ public sealed record Operation(string Method, string Path, JsonObject Node)
 
     public JsonNode? ResponseSchema => SuccessResponse?["content"]?["application/json"]?["schema"];
 
-    public JsonNode? RequestSchema => RequestBody?["content"]?["application/json"]?["schema"];
+    public bool Multipart => RequestBody?["content"]?["multipart/form-data"] is not null;
+
+    public JsonNode? RequestSchema =>
+        RequestBody?["content"]?["application/json"]?["schema"] ?? RequestBody?["content"]?["multipart/form-data"]?["schema"];
 
     public bool Paginated
     {
@@ -96,6 +99,25 @@ public static class Spec
         if (s["allOf"] is JsonArray { Count: 1 } only)
         {
             return Example(only[0], full, depth + 1);
+        }
+
+        if (s["allOf"] is JsonArray { Count: > 1 } parts)
+        {
+            // Several schemas that all apply (a reference plus a description): their objects merged.
+            var merged = new JsonObject();
+            foreach (var part in parts)
+            {
+                if (Example(part, full, depth + 1) is JsonObject piece)
+                {
+                    foreach (var pair in piece.ToList())
+                    {
+                        piece.Remove(pair.Key);
+                        merged[pair.Key] = pair.Value;
+                    }
+                }
+            }
+
+            return merged;
         }
 
         if (!new[] { "type", "enum", "anyOf", "oneOf", "properties", "const" }.Any(s.ContainsKey))
