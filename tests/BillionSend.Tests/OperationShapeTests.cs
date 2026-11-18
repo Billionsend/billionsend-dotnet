@@ -143,6 +143,66 @@ public sealed class OperationShapeTests : MockTest
         }
     }
 
+    /// <summary>
+    /// The API answers a 429 before it writes anything, so every operation, whatever its method and
+    /// with or without an idempotency key, is repeated after the wait <c>Retry-After</c> names,
+    /// with the same request.
+    /// </summary>
+    [Theory]
+    [MemberData(nameof(KeysWithErrors))]
+    public async Task RepeatsARateLimitedRequestOfAnyOperationAfterItsRetryAfter(string key)
+    {
+        var operation = Spec.Get(key);
+        using var client = Client();
+        var delays = new List<TimeSpan>();
+        client.Api.Delay = (delay, _) =>
+        {
+            delays.Add(delay);
+            return Task.CompletedTask;
+        };
+        var method = Find(client, operation.OperationId, out var target);
+        var arguments = BuildCall(operation, method).Arguments;
+        for (var i = 0; i < arguments.Count; i++)
+        {
+            if (arguments[i] is EventStreamOptions)
+            {
+                arguments[i] = new EventStreamOptions { Reconnect = false };
+            }
+        }
+
+        Mock.Error(key, 429, "rate_limit_exceeded", "Slow down", new Dictionary<string, string> { ["retry-after"] = "2" });
+        object? returned = await (dynamic)method.Invoke(target, arguments.ToArray())!;
+        if (returned is EventStream stream)
+        {
+            await stream.DisposeAsync();
+        }
+
+        var hits = Mock.HitsFor(key);
+        Assert.Equal(2, hits.Count);
+        Assert.Equal([TimeSpan.FromSeconds(2)], delays);
+        Assert.Equal(hits[0].Url, hits[1].Url);
+        Assert.Equal(hits[0].Body, hits[1].Body);
+        Assert.Equal(hits[0].Header("idempotency-key"), hits[1].Header("idempotency-key"));
+    }
+
+    [Fact]
+    public async Task RepeatsARateLimitedMultipartUploadWithTheSameForm()
+    {
+        const string key = "POST /contacts/imports";
+        using var client = Client();
+        client.Api.Delay = (_, _) => Task.CompletedTask;
+        Mock.Error(key, 429, "rate_limit_exceeded", "Slow down", new Dictionary<string, string> { ["retry-after"] = "0" });
+        await client.Contacts.Imports.CreateAsync(new Dictionary<string, object?>
+        {
+            ["file"] = new FileUpload("people.csv", System.Text.Encoding.UTF8.GetBytes("Email\nana@example.com\n")),
+            ["column_map"] = new { email = "Email" },
+        });
+        var hits = Mock.HitsFor(key);
+        Assert.Equal(2, hits.Count);
+        Assert.Equal(hits[0].Body, hits[1].Body);
+        Assert.Contains("ana@example.com", hits[1].Body);
+    }
+
     private sealed record BuiltCall(List<string> PathNames, List<string> PathValues, JsonNode? Body, Dictionary<string, JsonNode?> Query, List<object?> Arguments);
 
     /// <summary>The arguments for an operation's method: distinct path values, the body and the query from the schemas.</summary>

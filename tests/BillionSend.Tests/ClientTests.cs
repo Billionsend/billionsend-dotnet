@@ -375,6 +375,60 @@ public sealed class ClientTests : MockTest
     }
 
     [Fact]
+    public async Task RetriesARateLimitOfAnyMethodWithoutAnIdempotencyKeyButNotAServerError()
+    {
+        // The 429 is answered before anything is written, so a POST, PATCH or DELETE may repeat it.
+        var limited = new Dictionary<string, string> { ["retry-after"] = "0" };
+        Mock.Reply("POST /domains", 429, ErrorBody(429, "rate_limit_exceeded"), limited);
+        Mock.Reply("PATCH /domains/{id}", 429, ErrorBody(429, "rate_limit_exceeded"), limited);
+        Mock.Reply("DELETE /domains/{id}", 429, ErrorBody(429, "rate_limit_exceeded"), limited);
+        using var client = Client();
+        await client.Domains.CreateAsync(new { name = "example.com" });
+        await client.Domains.UpdateAsync(Id, new { click_tracking = true });
+        await client.Domains.DeleteAsync(Id);
+        Assert.Equal(2, Mock.HitsFor("POST /domains").Count);
+        Assert.Equal(2, Mock.HitsFor("PATCH /domains/{id}").Count);
+        Assert.Equal(2, Mock.HitsFor("DELETE /domains/{id}").Count);
+        Assert.All(Mock.HitsFor("POST /domains"), hit => Assert.Null(hit.Header("idempotency-key")));
+
+        // A server error is not: the first attempt may have been written.
+        Mock.Reset();
+        Busy("PATCH /domains/{id}");
+        await Assert.ThrowsAsync<ApiException>(() => client.Domains.UpdateAsync(Id, new { click_tracking = true }));
+        Assert.Single(Mock.Hits);
+    }
+
+    [Fact]
+    public async Task WaitsARateLimitsRetryAfterInSecondsOrAsAnHttpDateAndBacksOffWithoutOne()
+    {
+        using var client = Client(o => o.MaxRetries = 3);
+        var delays = new List<TimeSpan>();
+        client.Api.Delay = (delay, _) =>
+        {
+            delays.Add(delay);
+            return Task.CompletedTask;
+        };
+        client.Api.Random = () => 0;
+        client.Api.Now = () => DateTimeOffset.Parse("2026-11-19T12:00:00Z");
+        Mock.Reply("POST /domains", 429, ErrorBody(429, "rate_limit_exceeded"), new Dictionary<string, string> { ["retry-after"] = "3" });
+        Mock.Reply("POST /domains", 429, ErrorBody(429, "rate_limit_exceeded"), new Dictionary<string, string> { ["retry-after"] = "Thu, 19 Nov 2026 12:00:07 GMT" });
+        Mock.Reply("POST /domains", 429, ErrorBody(429, "rate_limit_exceeded"));
+        await client.Domains.CreateAsync(new { name = "example.com" });
+        Assert.Equal([TimeSpan.FromSeconds(3), TimeSpan.FromSeconds(7), TimeSpan.FromMilliseconds(2000)], delays);
+        Assert.Equal(4, Mock.HitsFor("POST /domains").Count);
+    }
+
+    [Fact]
+    public async Task ThrowsARateLimitWhoseRetryAfterIsOverAMinuteAtOnceWhateverTheMethod()
+    {
+        Mock.Reply("DELETE /domains/{id}", 429, ErrorBody(429, "rate_limit_exceeded"), new Dictionary<string, string> { ["retry-after"] = "61" });
+        using var client = Client();
+        var error = await Assert.ThrowsAsync<RateLimitException>(() => client.Domains.DeleteAsync(Id));
+        Assert.Equal(61, error.RetryAfter);
+        Assert.Single(Mock.Hits);
+    }
+
+    [Fact]
     public async Task RetriesASendWithTheKeyItMadeForTheCallOrTheCallers()
     {
         Busy("POST /emails");

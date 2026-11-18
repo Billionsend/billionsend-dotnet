@@ -392,6 +392,7 @@ public sealed class WireTests
             new IdempotentRequestOptions { Headers = new Dictionary<string, string> { [name] = value } }));
         Assert.IsNotType<ApiConnectionException>(error);
         Assert.Contains($"\"{name}\"", error.Message);
+        Assert.DoesNotContain(value, error.Message, StringComparison.Ordinal);
         Assert.Null(error.StatusCode);
         Assert.Empty(probe.Requests);
     }
@@ -405,6 +406,7 @@ public sealed class WireTests
             new { from = "a@x.com", to = "b@x.com", subject = "s", text = "t" },
             new IdempotentRequestOptions { IdempotencyKey = "welcome/订单-1" }));
         Assert.Contains("\"Idempotency-Key\"", error.Message);
+        Assert.DoesNotContain("welcome/订单-1", error.Message, StringComparison.Ordinal);
         Assert.Empty(probe.Requests);
     }
 

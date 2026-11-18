@@ -245,7 +245,7 @@ Cancelling a call's `CancellationToken` throws `OperationCanceledException`, as 
 
 ## Retries and timeouts
 
-Failures worth retrying are retried up to `MaxRetries` times (default 2): `429`, `5xx`, timeouts and network errors, and the `409 concurrent_idempotent_requests` the API answers while the first attempt with the same key is still running. Only requests safe to repeat are retried: `GET`, `PUT`, `DELETE` and the sending operations above. The client waits as `Retry-After` asks (seconds or an HTTP date), or backs off exponentially (0.5 s, 1 s, 2 s … up to 8 s, with jitter); a `Retry-After` over a minute is not waited for, and the error is thrown instead.
+Failures worth retrying are retried up to `MaxRetries` times (default 2). A `429` is retried for every operation, whatever its method and with or without an `Idempotency-Key`: the API answers it before it writes anything. The other failures (`5xx`, timeouts and network errors, and the `409 concurrent_idempotent_requests` the API answers while the first attempt with the same key is still running) are retried only for requests safe to repeat: `GET`, `PUT`, `DELETE` and the sending operations above. The client waits as `Retry-After` asks (seconds or an HTTP date), or backs off exponentially (0.5 s, 1 s, 2 s … up to 8 s, with jitter); a `Retry-After` over a minute is not waited for, and the error is thrown instead.
 
 Each attempt has its own timeout (default 60 seconds). An event stream is timed only until it opens.
 

@@ -217,7 +217,11 @@ namespace BillionSend.Internal
             int maxRetries,
             CancellationToken cancellationToken)
         {
-            if (!prepared.Retryable || attempt >= maxRetries || !Retry.IsRetryable(error, prepared.Keyed))
+            // A 429 is answered before anything is written, so any method may repeat it; every other
+            // failure (a 5xx, a dropped connection) is repeated only when the request is safe to repeat.
+            var rateLimited = error.StatusCode == 429;
+            if (attempt >= maxRetries ||
+                !(rateLimited || (prepared.Retryable && Retry.IsRetryable(error, prepared.Keyed))))
             {
                 return false;
             }
