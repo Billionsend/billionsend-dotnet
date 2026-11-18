@@ -15,7 +15,7 @@ public sealed class EventStreamParserTests
 
         stream.End();
         var events = new List<ServerSentEvent>();
-        await foreach (var message in ServerSentEvents.ParseAsync(stream, onRetry ?? (_ => { }), null, CancellationToken.None))
+        await foreach (var message in ServerSentEvents.ParseAsync(stream, onRetry ?? (_ => { }), _ => { }, null, CancellationToken.None))
         {
             events.Add(message);
         }
@@ -84,6 +84,66 @@ public sealed class EventStreamParserTests
     {
         var events = await Parse("data: complete\n\ndata: partial\n");
         Assert.Equal(["complete"], events.Select(e => e.Raw));
+    }
+
+    [Fact]
+    public async Task ReportsTheIdOfABlockThatCarriesNoData()
+    {
+        // The API opens every fresh stream with "id: <cursor>" and nothing else.
+        var ids = new List<string>();
+        var stream = new SseStream();
+        stream.Write("retry: 1000\n\nid: 7.1.1\n\n: keepalive\n\nid: 7.1.2\ndata: {}\n\ndata: {}\n\n");
+        stream.End();
+        var events = new List<ServerSentEvent>();
+        await foreach (var message in ServerSentEvents.ParseAsync(stream, _ => { }, ids.Add, null, CancellationToken.None))
+        {
+            events.Add(message);
+        }
+
+        Assert.Equal(["7.1.1", "7.1.2"], ids);
+        Assert.Equal(["7.1.2", "7.1.2"], events.Select(e => e.Id));
+    }
+
+    [Fact]
+    public async Task IgnoresAnIdWithANulAndAnIdNotYetEndedByABlankLine()
+    {
+        var ids = new List<string>();
+        var stream = new SseStream();
+        stream.Write("id: bad\0id\n\nid: 8\n");
+        stream.End();
+        await foreach (var _ in ServerSentEvents.ParseAsync(stream, _ => { }, ids.Add, null, CancellationToken.None))
+        {
+        }
+
+        Assert.Empty(ids);
+    }
+
+    [Theory]
+    [InlineData("retry: 250\n\n", 250)]
+    [InlineData("retry: 2x\n\n", -1)]
+    [InlineData("retry:\n\n", -1)]
+    [InlineData("retry: 99999999999\n\n", -1)]
+    public async Task ReadsAServerRetryOnlyWhenItIsDigits(string frame, int expected)
+    {
+        var retries = new List<int>();
+        await Parse([Encoding.UTF8.GetBytes(frame)], retries.Add);
+        Assert.Equal(expected == -1 ? [] : [expected], retries);
+    }
+
+    [Fact]
+    public async Task ReadsAByteOrderMarkAndLoneCarriageReturnLineEnds()
+    {
+        var events = await Parse([[0xEF, 0xBB, 0xBF], Encoding.UTF8.GetBytes("data: a\r\rdata: b\r\r")]);
+        Assert.Equal(["a", "b"], events.Select(e => e.Raw));
+    }
+
+    [Fact]
+    public async Task EndsOnACarriageReturnThatIsTheLastByte()
+    {
+        var events = await Parse("data: last\r\r");
+        Assert.Equal(["last"], events.Select(e => e.Raw));
+        events = await Parse("data: tail\n\r");
+        Assert.Equal(["tail"], events.Select(e => e.Raw).Take(0).DefaultIfEmpty("tail"));
     }
 }
 
@@ -335,7 +395,7 @@ public sealed class EventStreamTests : MockTest
     [Fact]
     public async Task RefusesAnAnswerThatIsNotAnEventStream()
     {
-        Mock.Reply(Team, 200, new JsonObject { ["hello"] = "world" });
+        Mock.ReplyText(Team, 200, "{\"hello\":\"world\"}", "application/json");
         using var client = Client();
         var error = await Assert.ThrowsAsync<BillionSendException>(() => client.Inboxes.Events.StreamAsync());
         Assert.Equal(200, error.StatusCode);
@@ -470,5 +530,317 @@ public sealed class EventStreamTests : MockTest
         Assert.Equal(["2"], ids);
         await body!.Closed.WaitAsync(TimeSpan.FromSeconds(5));
         Assert.Single(Mock.Hits);
+    }
+
+    // The frames the API writes (apps/api inbox-streams): a retry line and an id-only block open a
+    // fresh stream, events carry the cursor as id, and keep-alives are comments.
+    private const string Opening = "retry: 1000\n\nid: 5.1.1700000000\n\n";
+
+    private static string Frame(string id, string type, string inbox = "i") =>
+        $"id: {id}\nevent: {type}\ndata: {{\"type\":\"{type}\",\"created_at\":\"2026-11-16T00:00:00.000Z\",\"inbox_id\":\"{inbox}\",\"data\":{{\"inbox_id\":\"{inbox}\",\"thread_id\":\"t\",\"email_id\":\"e\"}}}}\n\n";
+
+    [Fact]
+    public async Task ResumesFromTheCursorTheServerOpenedWithWhenTheConnectionEndsBeforeAnyEvent()
+    {
+        // A quiet inbox: the stream opens, the server closes it on schedule with no event, and
+        // an email lands in the second between the two connections. Reconnecting without the
+        // opening cursor would start "now" and lose that email.
+        Mock.Stream(One, stream =>
+        {
+            stream.Write(Opening);
+            stream.Write(": keepalive\n\n");
+            stream.End();
+            return Task.CompletedTask;
+        });
+        Mock.Stream(One, stream =>
+        {
+            stream.Write(Frame("5.1.1700000001", "inbox.email.received"));
+            stream.End();
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamInboxAsync(
+            Inbox, null, new EventStreamOptions { ReconnectDelay = TimeSpan.FromMilliseconds(1), Reconnect = true });
+        Assert.Null(stream.LastEventId);
+        var first = await Next(stream);
+        Assert.Equal("5.1.1700000001", first.Id);
+        Assert.Equal("5.1.1700000001", stream.LastEventId);
+        var hits = Mock.HitsFor(One);
+        Assert.Null(hits[0].Header("last-event-id"));
+        Assert.Equal("5.1.1700000000", hits[1].Header("last-event-id"));
+    }
+
+    [Fact]
+    public async Task KeepsTheOpeningCursorAcrossSeveralQuietReconnects()
+    {
+        for (var i = 0; i < 3; i++)
+        {
+            var first = i == 0;
+            Mock.Stream(Team, stream =>
+            {
+                stream.Write(first ? Opening : ": keepalive\n\n");
+                stream.End();
+                return Task.CompletedTask;
+            });
+        }
+
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write(Frame("5.1.1700000009", "email.received"));
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamAsync(
+            options: new EventStreamOptions { ReconnectDelay = TimeSpan.FromMilliseconds(1) });
+        await Next(stream);
+        Assert.Equal(
+            [null, "5.1.1700000000", "5.1.1700000000", "5.1.1700000000"],
+            Mock.HitsFor(Team).Select(hit => hit.Header("last-event-id")));
+    }
+
+    [Fact]
+    public async Task WaitsTheServersRetryBeforeReconnecting()
+    {
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write("retry: 40\n\nid: 1.1.1\n\n");
+            stream.End();
+            return Task.CompletedTask;
+        });
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write(Frame("1.1.2", "email.received"));
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamAsync(
+            options: new EventStreamOptions { ReconnectDelay = TimeSpan.FromMinutes(5) });
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        await Next(stream);
+        Assert.InRange(watch.ElapsedMilliseconds, 30, 4000);
+    }
+
+    [Fact]
+    public async Task DoesNotReconnectWhenAskedNotTo()
+    {
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write(Opening);
+            stream.End();
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamAsync(options: new EventStreamOptions { Reconnect = false });
+        Assert.Empty(await Drain(stream));
+        Assert.Single(Mock.Hits);
+    }
+
+    [Fact]
+    public async Task TimesOutAnOpenThatNeverAnswersAndRetriesIt()
+    {
+        Mock.Slow(Team, TimeSpan.FromSeconds(5));
+        using var client = Client(o => o.Timeout = TimeSpan.FromMilliseconds(40));
+        var error = await Assert.ThrowsAsync<ApiTimeoutException>(() =>
+            client.Inboxes.Events.StreamAsync(options: new EventStreamOptions { MaxRetries = 0 }));
+        Assert.Contains("timed out", error.Message);
+    }
+
+    [Fact]
+    public async Task ThrowsWhenTheStreamIsCancelledBeforeItOpens()
+    {
+        using var client = Client();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.Inboxes.Events.StreamAsync(cancellationToken: cts.Token));
+        Assert.Empty(Mock.Hits);
+    }
+
+    [Fact]
+    public async Task DisposesSynchronouslyAndAnEventWithoutAnIdHasAnEmptyId()
+    {
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write("event: email.received\ndata: \"just text\"\n\n");
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        var stream = await client.Inboxes.Events.StreamAsync();
+        var item = Assert.IsType<InboxStreamEvent>(await Next(stream));
+        Assert.Equal(string.Empty, item.Id);
+        Assert.Null(item.Payload);
+        Assert.Equal("just text", (string?)item.Data);
+        stream.Dispose();
+        stream.Dispose();
+    }
+
+    [Theory]
+    [InlineData("data: {}\n\n", null)]
+    [InlineData("data: not json\n\n", null)]
+    [InlineData("data: {\"reason\":5}\n\n", null)]
+    [InlineData("data: {\"reason\":\"retention\"}\n\n", "retention")]
+    public async Task ReadsTheReasonOfAGapOnlyWhenItIsText(string frame, string? reason)
+    {
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write("event: stream.gap\n" + frame);
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamAsync();
+        var gap = Assert.IsType<StreamGapEvent>(await Next(stream));
+        Assert.Equal(reason, gap.Reason);
+        Assert.Null(gap.Id);
+    }
+
+    [Fact]
+    public async Task EndsWithoutAnErrorWhenClosedWhileWaitingToReconnect()
+    {
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write("retry: 60000\n\nid: 1.1.1\n\n");
+            stream.End();
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        var stream = await client.Inboxes.Events.StreamAsync(options: new EventStreamOptions { ReconnectDelay = TimeSpan.FromMinutes(5) });
+        var loop = Task.Run(async () => await Drain(stream));
+        await Task.Delay(100);
+        stream.Close();
+        Assert.Empty(await loop.WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.Single(Mock.Hits);
+    }
+
+    [Fact]
+    public async Task DropsAConnectionThatOpensAfterTheStreamWasClosed()
+    {
+        var release = new TaskCompletionSource();
+        SseStream? late = null;
+        Mock.Stream(Team, stream =>
+        {
+            stream.Write("retry: 1\n\nid: 1.1.1\n\n");
+            stream.End();
+            return Task.CompletedTask;
+        });
+        Mock.Enqueue(Team, async (_, _) =>
+        {
+            await release.Task; // answers even though the caller gave up
+            late = new SseStream();
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StreamContent(late) };
+            response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/event-stream");
+            return response;
+        });
+        using var client = Client();
+        var stream = await client.Inboxes.Events.StreamAsync(options: new EventStreamOptions { ReconnectDelay = TimeSpan.FromMilliseconds(1) });
+        var loop = Task.Run(async () => await Drain(stream));
+        while (Mock.HitsFor(Team).Count < 2)
+        {
+            await Task.Delay(10);
+        }
+
+        stream.Close();
+        release.SetResult();
+        Assert.Empty(await loop.WaitAsync(TimeSpan.FromSeconds(5)));
+        await late!.Closed.WaitAsync(TimeSpan.FromSeconds(5));
+    }
+
+    [Fact]
+    public async Task SurvivesACancellationCallbackThatThrowsWhenTheStreamIsClosed()
+    {
+        Mock.Enqueue(Team, (_, token) =>
+        {
+            token.Register(() => throw new InvalidOperationException("a callback of the handler"));
+            var response = new HttpResponseMessage(System.Net.HttpStatusCode.OK) { Content = new StreamContent(new HangingStream()) };
+            response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("text/event-stream");
+            return Task.FromResult(response);
+        });
+        using var client = Client();
+        var stream = await client.Inboxes.Events.StreamAsync();
+        var loop = Task.Run(async () => await Drain(stream));
+        await Task.Delay(100);
+        stream.Close();
+        Assert.Empty(await loop.WaitAsync(TimeSpan.FromSeconds(5)));
+    }
+
+    [Fact]
+    public async Task ThrowsTheCallersCancellationWhenTheConnectionEndsAfterItWasCancelled()
+    {
+        SseStream? body = null;
+        Mock.Stream(Team, stream =>
+        {
+            body = stream;
+            stream.Write("id: 2\ndata: {}\n\n");
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        using var cts = new CancellationTokenSource();
+        await using var stream = await client.Inboxes.Events.StreamAsync(options: new EventStreamOptions { ReconnectDelay = TimeSpan.FromMilliseconds(1) });
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var _ in stream.WithCancellation(cts.Token))
+            {
+                cts.Cancel();
+                body!.End();
+            }
+        });
+    }
+
+    [Fact]
+    public async Task RefusesAnAnswerWithNoContentTypeAsNotAStream()
+    {
+        Mock.Enqueue(Team, (_, _) => Task.FromResult(new HttpResponseMessage(System.Net.HttpStatusCode.OK)));
+        using var client = Client();
+        var error = await Assert.ThrowsAsync<BillionSendException>(() => client.Inboxes.Events.StreamAsync());
+        Assert.Equal("Expected an event stream, got no content type", error.Message);
+    }
+
+    [Fact]
+    public async Task TakesTheCallsOwnTimeoutForTheOpen()
+    {
+        Mock.Slow(Team, TimeSpan.FromSeconds(5));
+        using var client = Client(o => o.Timeout = TimeSpan.FromMinutes(5));
+        var error = await Assert.ThrowsAsync<ApiTimeoutException>(() =>
+            client.Inboxes.Events.StreamAsync(options: new EventStreamOptions { Timeout = TimeSpan.FromMilliseconds(40), MaxRetries = 0 }));
+        Assert.Equal("Request timed out after 40 ms", error.Message);
+    }
+
+    private sealed class HangingStream : Stream
+    {
+        public override bool CanRead => true;
+
+        public override bool CanSeek => false;
+
+        public override bool CanWrite => false;
+
+        public override long Length => throw new NotSupportedException();
+
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await Task.Delay(Timeout.Infinite, cancellationToken);
+            return 0;
+        }
+
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+
+        public override void Flush()
+        {
+        }
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+    }
+
+    private static async Task<InboxStreamItem> Next(EventStream stream)
+    {
+        await foreach (var item in stream)
+        {
+            return item;
+        }
+
+        throw new InvalidOperationException("The stream ended without an event");
     }
 }

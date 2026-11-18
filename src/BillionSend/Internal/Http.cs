@@ -55,6 +55,7 @@ namespace BillionSend.Internal
         {
             var index = 0;
             string? missing = null;
+            string? invalid = null;
             var filled = Placeholder.Replace(template, match =>
             {
                 var value = index < values.Count ? values[index] : null;
@@ -65,11 +66,23 @@ namespace BillionSend.Internal
                     return string.Empty;
                 }
 
+                // "." and ".." would be folded away by the URL parser, and so call another route.
+                if (value is "." or "..")
+                {
+                    invalid ??= match.Groups[1].Value;
+                    return string.Empty;
+                }
+
                 return Uri.EscapeDataString(value);
             });
             if (missing is not null)
             {
                 throw new BillionSendException($"Missing path parameter \"{missing}\"");
+            }
+
+            if (invalid is not null)
+            {
+                throw new BillionSendException($"Invalid path parameter \"{invalid}\": a dot segment");
             }
 
             return filled;

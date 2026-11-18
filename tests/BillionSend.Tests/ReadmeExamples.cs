@@ -1,5 +1,8 @@
 // The README's examples, kept here so the build fails when they drift from the SDK, and checked
-// line by line against the README by ReadmeTests. Never executed.
+// line by line against the README by ReadmeTests. The ones that take a client are run against the
+// contract mock by ReadmeRunTests (every request they send is validated against the OpenAPI
+// schemas) and against the live API by the BillionSend.E2E scenarios; the rest need a real
+// account, a web server or an inbox, and are only compiled.
 using BillionSend;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
@@ -64,6 +67,7 @@ internal static class ReadmeExamples
         var page = await client.Emails.Receiving.ListAsync(new Dictionary<string, object?>
         {
             ["limit"] = 20,
+            ["inbox_id"] = "6a1f1d38-3c55-4a4e-9a57-0f2b3c4d5e6f", // an inbox's id (not its address); unread needs one, or a key restricted to one
             ["unread"] = "true",
         });
 
@@ -233,5 +237,65 @@ public sealed class ReadmeTests
             .Where(line => line.Length > 0 && !examples.Contains(line))
             .ToList();
         Assert.Empty(missing);
+    }
+}
+
+/// <summary>The README examples that take a client, run: what they send is what the API's schemas accept.</summary>
+public sealed class ReadmeRunTests : Support.MockTest
+{
+    [Fact]
+    public async Task RunsTheRequestAndAnswerExample()
+    {
+        using var client = Client();
+        await ReadmeExamples.RequestsAndAnswers(client);
+        var hit = Assert.Single(Mock.Hits);
+        Assert.Equal("GET /emails/receiving", hit.Key);
+        Assert.Equal("20", hit.Query["limit"]);
+        Assert.Equal("6a1f1d38-3c55-4a4e-9a57-0f2b3c4d5e6f", hit.Query["inbox_id"]);
+        Assert.Equal("true", hit.Query["unread"]);
+    }
+
+    [Fact]
+    public async Task RunsTheCsvImportExample()
+    {
+        var path = Path.Combine(Directory.GetCurrentDirectory(), "people.csv");
+        await File.WriteAllTextAsync(path, "Email,First Name\nana@example.com,Ana\n");
+        try
+        {
+            using var client = Client();
+            await ReadmeExamples.ImportContacts(client);
+            Assert.Equal(["POST /contacts/imports", "GET /contacts/imports/{id}"], Mock.Hits.Select(hit => hit.Key));
+            Assert.Contains("filename=\"people.csv\"", Mock.Hits[0].Body);
+            Assert.Contains("Ana", Mock.Hits[0].Body);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task RunsTheLiveEventsExampleUntilItsTokenIsCancelled()
+    {
+        using var client = Client();
+        using var stopping = new CancellationTokenSource(TimeSpan.FromMilliseconds(300));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => ReadmeExamples.LiveEvents(client, "1.1.1", stopping.Token));
+        var hit = Mock.Hits[0];
+        Assert.Equal("GET /inboxes/events", hit.Key);
+        Assert.Equal("inbox.email.received,inbox.thread.created", hit.Query["types"]);
+        Assert.Equal("1.1.1", hit.Header("last-event-id"));
+    }
+
+    [Fact]
+    public async Task RunsTheIdempotencyPaginationAndErrorExamples()
+    {
+        using var client = Client();
+        var message = new { from = "Acme <hello@acme.dev>", to = new[] { "a@example.com" }, subject = "Hi", text = "Hi" };
+        await ReadmeExamples.Idempotency(client, message, new ReadmeExamples.User("42"));
+        await ReadmeExamples.Pagination(client);
+        await ReadmeExamples.Errors(client, Support.MockTest.Id);
+        Assert.Equal(["POST /emails", "GET /contacts", "GET /emails/{id}"], Mock.Hits.Select(hit => hit.Key));
+        Assert.Equal("welcome/42", Mock.Hits[0].Header("idempotency-key"));
+        Assert.Equal("100", Mock.Hits[1].Query["limit"]);
     }
 }

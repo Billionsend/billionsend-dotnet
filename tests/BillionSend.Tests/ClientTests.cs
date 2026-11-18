@@ -159,6 +159,18 @@ public sealed class ClientTests : MockTest
         Assert.False(body.ContainsKey("ReplyTo"));
     }
 
+    [Fact]
+    public async Task LeavesAnUnsetPropertyOfYourOwnTypeOutOfTheBodyBecauseTheApiRefusesNull()
+    {
+        using var client = Client();
+        // ReplyTo and Headers are null; the contract mock refuses a body that carries them as null.
+        await client.Emails.SendAsync(new Message { From = "hello@example.com", To = ["person@example.com"], Subject = "Hi" });
+        var body = Assert.Single(Mock.Hits).Json!.AsObject();
+        Assert.False(body.ContainsKey("reply_to"));
+        Assert.False(body.ContainsKey("headers"));
+        Assert.Equal(["from", "to", "subject"], body.Select(pair => pair.Key));
+    }
+
     // ---------------------------------------------------------------- errors
 
     [Fact]

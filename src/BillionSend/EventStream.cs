@@ -216,7 +216,7 @@ namespace BillionSend
                     if (connection is not null)
                     {
                         var events = ServerSentEvents
-                            .ParseAsync(connection.Body, ms => _delay = TimeSpan.FromMilliseconds(ms), LastEventId, token)
+                            .ParseAsync(connection.Body, ms => _delay = TimeSpan.FromMilliseconds(ms), id => LastEventId = id, LastEventId, token)
                             .GetAsyncEnumerator(token);
                         try
                         {
@@ -409,6 +409,7 @@ namespace BillionSend
         public static async IAsyncEnumerable<ServerSentEvent> ParseAsync(
             Stream body,
             Action<int> onRetry,
+            Action<string> onId,
             string? initialId,
             [EnumeratorCancellation] CancellationToken cancellationToken)
         {
@@ -417,7 +418,7 @@ namespace BillionSend
             var chars = new char[Encoding.UTF8.GetMaxCharCount(bytes.Length) + 1];
             var buffer = new StringBuilder();
             var first = true;
-            var parser = new LineParser(initialId, onRetry);
+            var parser = new LineParser(initialId, onRetry, onId);
             while (true)
             {
                 var read = await body.ReadAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
@@ -497,21 +498,33 @@ namespace BillionSend
         private sealed class LineParser
         {
             private readonly Action<int> _onRetry;
+            private readonly Action<string> _onId;
             private readonly List<string> _data = new();
             private string? _lastId;
+            private bool _idSeen;
             private string _eventName = string.Empty;
             private bool _hasData;
 
-            public LineParser(string? initialId, Action<int> onRetry)
+            public LineParser(string? initialId, Action<int> onRetry, Action<string> onId)
             {
                 _lastId = initialId;
                 _onRetry = onRetry;
+                _onId = onId;
             }
 
             public ServerSentEvent? Process(string line)
             {
                 if (line.Length == 0)
                 {
+                    // A block with an id and no data (the server opens every fresh stream with one)
+                    // still moves the stream position: a connection that drops before its first
+                    // event resumes from it, as the event stream standard has it.
+                    if (_idSeen && _lastId is not null)
+                    {
+                        _onId(_lastId);
+                    }
+
+                    _idSeen = false;
                     if (!_hasData)
                     {
                         _eventName = string.Empty;
@@ -562,6 +575,7 @@ namespace BillionSend
                         if (!value.Contains('\0'))
                         {
                             _lastId = value;
+                            _idSeen = true;
                         }
 
                         break;

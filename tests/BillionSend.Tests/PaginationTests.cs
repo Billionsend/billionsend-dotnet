@@ -11,7 +11,7 @@ public sealed class PaginationTests : MockTest
         "0b8e3c6a-0000-4000-8000-000000000003",
     ];
 
-    private static JsonObject Page(bool hasMore, params string[] ids) => new()
+    private static JsonObject RawPage(bool hasMore, params string[] ids) => new()
     {
         ["object"] = "list",
         ["has_more"] = hasMore,
@@ -32,8 +32,8 @@ public sealed class PaginationTests : MockTest
     [Fact]
     public async Task WalksForwardWithAfterTheLastIdUntilHasMoreIsFalse()
     {
-        Mock.Reply("GET /contacts", 200, Page(true, Ids[0], Ids[1]));
-        Mock.Reply("GET /contacts", 200, Page(false, Ids[2]));
+        Mock.Page("GET /contacts", true, Ids[0], Ids[1]);
+        Mock.Page("GET /contacts", false, Ids[2]);
         using var client = Client();
         var seen = await Ids_(client.Contacts.ListAllAsync(new Dictionary<string, object?> { ["limit"] = 2 }));
         Assert.Equal(Ids, seen);
@@ -45,8 +45,8 @@ public sealed class PaginationTests : MockTest
     [Fact]
     public async Task WalksBackwardWithBeforeTheFirstIdWhenStartedWithBefore()
     {
-        Mock.Reply("GET /domains", 200, Page(true, Ids[1], Ids[2]));
-        Mock.Reply("GET /domains", 200, Page(false, Ids[0]));
+        Mock.Page("GET /domains", true, Ids[1], Ids[2]);
+        Mock.Page("GET /domains", false, Ids[0]);
         using var client = Client();
         var seen = await Ids_(client.Domains.ListAllAsync(new Dictionary<string, object?> { ["before"] = Id }));
         Assert.Equal([Ids[1], Ids[2], Ids[0]], seen);
@@ -58,7 +58,7 @@ public sealed class PaginationTests : MockTest
     [Fact]
     public async Task StopsEarlyWhenTheCallerBreaksOut()
     {
-        Mock.Reply("GET /webhooks", 200, Page(true, Ids[0], Ids[1]));
+        Mock.Page("GET /webhooks", true, Ids[0], Ids[1]);
         using var client = Client();
         await foreach (var item in client.Webhooks.ListAllAsync())
         {
@@ -73,8 +73,8 @@ public sealed class PaginationTests : MockTest
     public async Task FollowsNestedListsWithTheirPathParameters()
     {
         const string key = "GET /inboxes/{inbox_id}/threads/{thread_id}/emails";
-        Mock.Reply(key, 200, Page(true, Ids[0]));
-        Mock.Reply(key, 200, Page(false, Ids[1]));
+        Mock.Page(key, true, Ids[0]);
+        Mock.Page(key, false, Ids[1]);
         using var client = Client();
         var seen = await Ids_(client.Inboxes.Threads.Emails.ListAllAsync(Inbox, Id));
         Assert.Equal([Ids[0], Ids[1]], seen);
@@ -102,7 +102,7 @@ public sealed class PaginationTests : MockTest
     [Fact]
     public async Task StopsOnTheCancellationToken()
     {
-        Mock.Reply("GET /emails", 200, Page(true, Ids[0], Ids[1]));
+        Mock.Page("GET /emails", true, Ids[0], Ids[1]);
         using var client = Client();
         using var cts = new CancellationTokenSource();
         await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
@@ -174,13 +174,13 @@ public sealed class PaginationTests : MockTest
     [Fact]
     public async Task IterateWorksWithAnyPageFetcherAndDetachesItems()
     {
-        var pages = new Queue<JsonNode>([Page(true, "a", "b"), Page(true)]);
+        var pages = new Queue<JsonNode>([RawPage(true, "a", "b"), RawPage(true)]);
         var queries = new List<IReadOnlyDictionary<string, object?>>();
         var seen = new List<JsonNode>();
         await foreach (var item in Pagination.IterateAsync((query, _) =>
         {
             queries.Add(query);
-            return Task.FromResult<JsonNode?>(pages.Count > 0 ? pages.Dequeue() : Page(false));
+            return Task.FromResult<JsonNode?>(pages.Count > 0 ? pages.Dequeue() : RawPage(false));
         }))
         {
             seen.Add(item);

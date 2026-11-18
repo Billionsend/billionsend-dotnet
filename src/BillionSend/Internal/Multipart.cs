@@ -5,6 +5,7 @@ using System.Globalization;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text;
 using System.Text.Json.Nodes;
 
 namespace BillionSend.Internal
@@ -26,7 +27,7 @@ namespace BillionSend.Internal
                     nameof(body));
             }
 
-            using var form = new MultipartFormDataContent();
+            using var form = new MultipartFormDataContent { HeaderEncodingSelector = (_, _) => Encoding.UTF8 };
             foreach (var (name, value) in fields)
             {
                 switch (value)
@@ -36,7 +37,12 @@ namespace BillionSend.Internal
                     case FileUpload file:
                         var part = new ByteArrayContent(file.Content);
                         part.Headers.ContentType = MediaTypeHeaderValue.Parse(file.ContentType);
-                        form.Add(part, name, file.FileName);
+                        // Written by hand: the framework's own writer turns a non-ASCII name into an
+                        // encoded word no server reads, and refuses a name with a quote in it.
+                        part.Headers.TryAddWithoutValidation(
+                            "Content-Disposition",
+                            $"form-data; name=\"{Quote(name)}\"; filename=\"{Quote(file.FileName)}\"");
+                        form.Add(part);
                         break;
                     default:
                         form.Add(new StringContent(Text(value, json)), name);
@@ -48,6 +54,10 @@ namespace BillionSend.Internal
             var contentType = form.Headers.ContentType!.ToString();
             return (form.ReadAsByteArrayAsync().GetAwaiter().GetResult(), contentType);
         }
+
+        /// <summary>A name inside a quoted header parameter, as browsers write it: <c>"</c> and line breaks percent-encoded.</summary>
+        private static string Quote(string name) =>
+            name.Replace("\"", "%22").Replace("\r", "%0D").Replace("\n", "%0A");
 
         private static string Text(object value, JsonSerializerOptions json) => value switch
         {

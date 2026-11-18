@@ -246,11 +246,10 @@ public sealed class ContractMockTests : MockTest
         Assert.Equal("clicked", hit.Query["type"]);
         Assert.Equal("50", hit.Query["limit"]);
         Mock.Reset();
-        Mock.Reply("GET /broadcasts/{id}/recipients", 200, new JsonObject
+        Mock.ReplyExample("GET /broadcasts/{id}/recipients", page =>
         {
-            ["object"] = "list",
-            ["has_more"] = false,
-            ["data"] = new JsonArray(),
+            page["has_more"] = false;
+            page["data"] = new JsonArray();
         });
         var seen = 0;
         await foreach (var _ in client.Broadcasts.RecipientsAllAsync(Id, new Dictionary<string, object?> { ["type"] = "bounced" }))
@@ -263,21 +262,30 @@ public sealed class ContractMockTests : MockTest
     }
 
     [Fact]
-    public async Task ReturnsTheCurrentUsageShape()
+    public async Task HandsBackTheAnswerAsTheApiSentItWithFieldsItDoesNotKnow()
     {
-        using var client = Client();
-        Mock.Reply("GET /usage", 200, new JsonObject
+        // The usage answer as the document shows it, plus what a later API version might add:
+        // an unknown object, a number that is not an integer, a null and text that needs escaping.
+        Mock.ReplyExample("GET /usage", usage =>
         {
-            ["object"] = "usage",
-            ["emails"] = new JsonObject
+            usage["added_later"] = new JsonObject
             {
-                ["daily"] = new JsonObject { ["used"] = 3, ["limit"] = 100, ["sent"] = 3, ["received"] = 0, ["resets_at"] = "2026-11-20T00:00:00.000Z" },
-            },
+                ["ratio"] = 0.125,
+                ["big"] = 9007199254740993L,
+                ["nothing"] = null,
+                ["text"] = "caf\u00e9 \"quoted\" \U0001F600",
+            };
         });
+        using var client = Client();
         var usage = await client.Usage.GetAsync();
-        Assert.Equal(3, (int?)usage!["emails"]!["daily"]!["used"]);
-        Assert.Equal(100, (int?)usage["emails"]!["daily"]!["limit"]);
-        Assert.Null(usage["limits"]);
+        var hit = Assert.Single(Mock.Hits);
+        Assert.True(JsonNode.DeepEquals(hit.Response, usage));
+        var extra = usage!["added_later"]!.AsObject();
+        Assert.Equal(0.125, extra["ratio"]!.GetValue<double>());
+        Assert.Equal(9007199254740993L, extra["big"]!.GetValue<long>());
+        Assert.True(extra.ContainsKey("nothing"));
+        Assert.Null(extra["nothing"]);
+        Assert.Equal("caf\u00e9 \"quoted\" \U0001F600", extra["text"]!.GetValue<string>());
     }
 
     [Fact]

@@ -7,6 +7,9 @@
 - `FileUpload` and `multipart/form-data` bodies for `Contacts.Imports.CreateAsync` (a file part, text fields, and objects or lists as their JSON text); a required query parameter (`Broadcasts.RecipientsAsync`'s `type`) is a required argument.
 - Removed: `Unsubscribes.DeleteAsync` (a recipient's opt-out is permanent) and `Webhooks.RotateAsync`, replaced by `Webhooks.RotateSigningSecretAsync`.
 - `ListAllAsync` iterators now cover all 33 cursor-paginated lists.
+- Fixed: an event stream that closed before its first event (a quiet inbox's stream is closed about every ten minutes) reconnected without `Last-Event-ID`, so mail that arrived in the second between the two connections was never delivered; the stream now resumes from the position the server opens every stream with.
+- Fixed: a successful answer with no body (a 204, say) is `null` instead of an error; your own request types leave an unset property out instead of sending `null`, which the API refuses; a multipart file name with non-ASCII characters is written as plain UTF-8 and one with a quote no longer throws; a path value of `.` or `..` is refused instead of being folded into another route.
+- Tests: every answer of the fake API and every request is checked against the OpenAPI schemas, each operation is called with its own sample body and query and compared piece by piece, each declared error status is thrown as its type, coverage of the hand-written runtime is gated in CI (95% of lines and branches), and `tests/BillionSend.E2E` runs the SDK against the live API (not part of CI).
 
 ## 0.1.0 (2026-11-17)
 

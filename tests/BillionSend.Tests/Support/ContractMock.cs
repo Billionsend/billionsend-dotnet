@@ -20,6 +20,9 @@ public sealed record Hit(
     /// <summary>The JSON the mock answered with, when it answered JSON.</summary>
     public JsonNode? Response { get; set; }
 
+    /// <summary>The request target as it went on the wire: path and query, still percent-encoded.</summary>
+    public string Target => Url.PathAndQuery;
+
     public string? Header(string name) => Headers.TryGetValue(name.ToLowerInvariant(), out var value) ? value : null;
 
     public JsonNode? Json => Body is null ? null : JsonNode.Parse(Body);
@@ -76,8 +79,57 @@ public sealed class ContractMock : HttpMessageHandler
         _queued.GetOrAdd(key, _ => new ConcurrentQueue<Responder>()).Enqueue(responder);
     }
 
-    public void Reply(string key, int status, JsonNode? body = null, IDictionary<string, string>? headers = null) =>
+    /// <summary>
+    /// Queues a JSON answer. It must be one the API could give for that operation and status: a
+    /// fixture that is not in the shape the document declares fails the test where it is queued
+    /// (<see cref="ReplyText"/> is the way to send something deliberately wrong).
+    /// </summary>
+    public void Reply(string key, int status, JsonNode? body = null, IDictionary<string, string>? headers = null)
+    {
+        if (body is not null)
+        {
+            var problems = CheckAnswer(Spec.Get(key), status, body).ToList();
+            if (problems.Count > 0)
+            {
+                throw new ArgumentException($"{key}: the answer queued for status {status} is invalid: {string.Join("; ", problems)}");
+            }
+        }
+
         Enqueue(key, (_, _) => Task.FromResult(Json(status, body?.ToJsonString() ?? string.Empty, headers)));
+    }
+
+    /// <summary>
+    /// Queues the operation's success answer as the schema generates it (the example the document
+    /// gives, or a sample), changed by <paramref name="change"/>; the result must still match the schema.
+    /// </summary>
+    public void ReplyExample(string key, Action<JsonNode>? change = null, bool full = true)
+    {
+        var operation = Spec.Get(key);
+        var body = Spec.Example(operation.ResponseSchema, full) ?? throw new InvalidOperationException($"{key} answers no body");
+        change?.Invoke(body);
+        Reply(key, int.Parse(operation.SuccessStatus!), body);
+    }
+
+    /// <summary>
+    /// Queues one page of a cursor list: the operation's own list shape, with one item of its item
+    /// schema for each id.
+    /// </summary>
+    public void Page(string key, bool hasMore, params string[] ids)
+    {
+        var operation = Spec.Get(key);
+        var schema = Spec.Resolve(operation.ResponseSchema!);
+        var item = Spec.Example(schema["properties"]!["data"]!["items"], full: true) as JsonObject ?? new JsonObject();
+        ReplyExample(key, page =>
+        {
+            page["has_more"] = hasMore;
+            page["data"] = new JsonArray(ids.Select(id =>
+            {
+                var copy = (JsonObject)item.DeepClone();
+                copy["id"] = id;
+                return (JsonNode)copy;
+            }).ToArray());
+        });
+    }
 
     public void ReplyText(string key, int status, string text, string contentType = "text/plain") =>
         Enqueue(key, (_, _) =>
@@ -239,7 +291,25 @@ public sealed class ContractMock : HttpMessageHandler
         return response;
     }
 
-    private static Dictionary<string, string> ParseQuery(string query, out List<string> repeated)
+    /// <summary>
+    /// An answer against the schema the operation declares for its status; a status it does not
+    /// declare must be an error (the API's one error shape), never a success.
+    /// </summary>
+    private static IEnumerable<string> CheckAnswer(Operation operation, int status, JsonNode? body)
+    {
+        var responses = (JsonObject)operation.Node["responses"]!;
+        var declared = responses[status.ToString()] as JsonObject;
+        if (declared is null && status is >= 200 and < 300)
+        {
+            return [$"status {status} is not declared"];
+        }
+
+        var schema = declared?["content"]?["application/json"]?["schema"]
+            ?? Spec.Document["components"]!["schemas"]!["ErrorResponse"];
+        return Spec.Validate(body, schema, $"answer {status}");
+    }
+
+    public static Dictionary<string, string> ParseQuery(string query, out List<string> repeated)
     {
         var result = new Dictionary<string, string>();
         repeated = [];
@@ -258,7 +328,7 @@ public sealed class ContractMock : HttpMessageHandler
     }
 
     /// <summary>The operation a path belongs to: the template with the most literal segments wins.</summary>
-    private static (Operation?, Dictionary<string, string>) Match(string method, string path)
+    public static (Operation?, Dictionary<string, string>) Match(string method, string path)
     {
         var segments = path.Trim('/').Split('/');
         Operation? best = null;
@@ -353,17 +423,22 @@ public sealed class ContractMock : HttpMessageHandler
         return form;
     }
 
-    private static IEnumerable<string> Check(
+    /// <summary>
+    /// What is wrong with a request the SDK sent, judged by the operation's declaration: the API
+    /// key header (never echoed), the user agent, the idempotency key, the parameters and the body.
+    /// </summary>
+    public static IEnumerable<string> Check(
         Operation operation,
         IReadOnlyDictionary<string, string> headers,
         IReadOnlyDictionary<string, string> query,
         IReadOnlyDictionary<string, string> pathParams,
-        string? body)
+        string? body,
+        string apiKey = ApiKey)
     {
         headers.TryGetValue("authorization", out var authorization);
-        if (operation.TakesApiKey && authorization != $"Bearer {ApiKey}")
+        if (operation.TakesApiKey && authorization != $"Bearer {apiKey}")
         {
-            yield return $"expected the API key, got {authorization ?? "no Authorization header"}";
+            yield return $"expected the API key, got {(authorization is null ? "no Authorization header" : "a different Authorization header")}";
         }
 
         if (!operation.TakesApiKey && authorization is not null)

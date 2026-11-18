@@ -58,7 +58,8 @@ public static class Spec
 
     private static readonly string[] HttpMethods = ["get", "put", "post", "patch", "delete"];
 
-    public static readonly string SnapshotPath = FindSnapshot();
+    /// <summary>The snapshot, or the document <c>BILLIONSEND_OPENAPI_PATH</c> names (the live suite checks against the published one).</summary>
+    public static readonly string SnapshotPath = Environment.GetEnvironmentVariable("BILLIONSEND_OPENAPI_PATH") is { Length: > 0 } custom ? custom : FindSnapshot();
 
     public static readonly JsonObject Document = (JsonObject)JsonNode.Parse(File.ReadAllText(SnapshotPath))!;
 
@@ -96,6 +97,12 @@ public static class Spec
         }
 
         var s = Resolve(schema);
+        if (s["example"] is { } documented && Validate(documented, schema).Count == 0)
+        {
+            // What the document itself shows is the best fixture.
+            return documented.DeepClone();
+        }
+
         if (s["allOf"] is JsonArray { Count: 1 } only)
         {
             return Example(only[0], full, depth + 1);

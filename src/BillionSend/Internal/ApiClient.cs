@@ -20,6 +20,9 @@ namespace BillionSend.Internal
         private static readonly JsonSerializerOptions DefaultJson = new(JsonSerializerDefaults.General)
         {
             PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
+            // An unset property of your own type is left out: the API refuses a null for a field it
+            // takes as text, so a type with optional properties would otherwise fail unless every one is set.
+            DefaultIgnoreCondition = System.Text.Json.Serialization.JsonIgnoreCondition.WhenWritingNull,
         };
 
         private readonly string? _apiKey;
@@ -76,8 +79,6 @@ namespace BillionSend.Internal
         public TimeSpan Timeout { get; }
 
         public int MaxRetries { get; }
-
-        public bool HasApiKey => _apiKey is not null;
 
         // Seams for the tests: waiting, jitter, the clock and new keys.
         internal Func<TimeSpan, CancellationToken, Task> Delay { get; set; } = Task.Delay;
@@ -327,6 +328,12 @@ namespace BillionSend.Internal
                         requestId,
                         Header(response, "Retry-After"),
                         Now());
+                }
+
+                // An answer with no body (a 204, say) is a success with nothing to parse.
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    return null;
                 }
 
                 try

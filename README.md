@@ -73,6 +73,7 @@ Methods follow the API's `operationId`s: `emails.receiving.attachments.list` is 
 var page = await client.Emails.Receiving.ListAsync(new Dictionary<string, object?>
 {
     ["limit"] = 20,
+    ["inbox_id"] = "6a1f1d38-3c55-4a4e-9a57-0f2b3c4d5e6f", // an inbox's id (not its address); unread needs one, or a key restricted to one
     ["unread"] = "true",
 });
 
@@ -101,7 +102,7 @@ Console.WriteLine($"{import!["status"]}");
 
 ## Send once: idempotency
 
-The sending operations (`Emails.SendAsync`, `Emails.BatchAsync`, `Emails.Receiving.ReplyAsync` / `ForwardAsync`, `Inboxes.SendAsync`, `Inboxes.Drafts.SendAsync`, `Inboxes.Threads.Emails.ReplyAsync` / `ForwardAsync`) always send an `Idempotency-Key` header. Without your own, each call gets a new random key (a UUID) and that call's retries reuse it, so a retry after a timeout cannot send twice. Pass your own key to make a send safe across calls and processes too; a repeat with the same key and payload returns the first result:
+The sending operations (`Emails.SendAsync`, `Emails.BatchAsync`, `Emails.Receiving.ReplyAsync` / `ForwardAsync`, `Inboxes.SendAsync`, `Inboxes.Drafts.SendAsync`, `Inboxes.Threads.Emails.ReplyAsync` / `ForwardAsync`, `Events.SendAsync`) always send an `Idempotency-Key` header. Without your own, each call gets a new random key (a UUID) and that call's retries reuse it, so a retry after a timeout cannot send twice. Pass your own key to make a send safe across calls and processes too; a repeat with the same key and payload returns the first result:
 
 ```csharp
 await client.Emails.SendAsync(message, new IdempotentRequestOptions
@@ -331,11 +332,30 @@ The build and the tests need the .NET 8 SDK (`global.json` pins the version); th
 
 ```bash
 python3 scripts/generate.py --check   # the generated code matches the OpenAPI snapshot
-dotnet test                           # every test
+dotnet test                           # every offline test (no network)
 dotnet pack src/BillionSend -c Release -o artifacts
 ```
 
 `scripts/dotnet.sh` runs the same `dotnet` commands in the pinned SDK container image with rootless podman (`scripts/dotnet.sh test`).
+
+CI also measures coverage and fails below 95% of lines and of branches in the hand-written runtime code (everything but `Generated/`) or when a generated method is never called:
+
+```bash
+dotnet test --settings tests/coverage.runsettings --collect:"XPlat Code Coverage" --results-directory TestResults
+python3 scripts/check_coverage.py "TestResults/*/coverage.cobertura.xml"
+```
+
+Every answer the offline tests' fake API gives, and every request the SDK sends it, is validated against the schemas of the OpenAPI snapshot (`tests/BillionSend.Tests/Support/ContractMock.cs`), so a test fixture cannot drift from the API.
+
+### Live API tests
+
+`tests/BillionSend.E2E` runs the SDK against the real API: sends to the SES mailbox simulator, creates segments, topics, templates, webhooks, automations and the like with a `sdk-e2e-dotnet-` name, and deletes everything it made. Every request and every answer is checked against the OpenAPI document. It is not in `BillionSend.sln` and CI never runs it; without a key its live test is skipped:
+
+```bash
+BILLIONSEND_E2E_API_KEY=bs_... dotnet test tests/BillionSend.E2E
+```
+
+It needs a key with full access to an account that has a verified sending domain (the sender is `SDK E2E <sdk-e2e@mail.billionsend.dev>`), sends fewer than 20 emails, and makes at most 150 requests at one a second. Set `BILLIONSEND_OPENAPI_PATH` to check against another copy of the document than the snapshot.
 
 The contract is `openapi/api.openapi.json`, a snapshot of the published OpenAPI document. `src/BillionSend/Generated/Resources.g.cs` is generated from it: one method per operation, an iterator per cursor list, and the operation's descriptions as doc comments. The tests run every SDK method against a local mock that checks each request against that snapshot and answers from it, and fail when an operation has no SDK method. When the API changes:
 
