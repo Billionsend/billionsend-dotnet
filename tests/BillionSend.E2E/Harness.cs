@@ -47,10 +47,19 @@ public sealed class SendGuard
         return open >= 0 && close > open ? text[(open + 1)..close].Trim() : text;
     }
 
-    /// <summary>Throws <see cref="LiveGuardException"/> when the request breaks a rule; otherwise notes what it suppresses.</summary>
+    /// <summary>
+    /// Throws <see cref="LiveGuardException"/> when the request breaks a rule; otherwise notes what
+    /// it suppresses. A body of a send or of a suppression that cannot be read as JSON, and a
+    /// recipient that is not text, cannot be checked and so are refused too.
+    /// </summary>
     public void Check(Operation? operation, string? body)
     {
-        if (body is null || !body.TrimStart().StartsWith('[') && !body.TrimStart().StartsWith('{'))
+        var key = operation?.Key;
+        var suppressing = key is "POST /suppressions" or "POST /suppressions/batch/add";
+        // Sending operations carry an Idempotency-Key; events.send has no recipients, only a payload
+        // of the caller's own keys. A route the document does not know is checked as a send.
+        var sending = operation is null || (operation.Idempotent && key != "POST /events/send");
+        if ((!suppressing && !sending) || string.IsNullOrWhiteSpace(body))
         {
             return;
         }
@@ -62,20 +71,17 @@ public sealed class SendGuard
         }
         catch (System.Text.Json.JsonException)
         {
-            return;
+            throw new LiveGuardException("the body cannot be read as JSON, so its recipients cannot be checked");
         }
 
-        var key = operation?.Key;
-        if (key is "POST /suppressions" or "POST /suppressions/batch/add")
+        if (json is not JsonObject and not JsonArray)
+        {
+            throw new LiveGuardException("the body is neither an object nor a list, so its recipients cannot be checked");
+        }
+
+        if (suppressing)
         {
             Note(json);
-            return;
-        }
-
-        // Sending operations carry an Idempotency-Key; events.send has no recipients, only a payload
-        // of the caller's own keys. A route the document does not know is checked as a send.
-        if (operation is not null && (!operation.Idempotent || key == "POST /events/send"))
-        {
             return;
         }
 
@@ -126,6 +132,7 @@ public sealed class SendGuard
         {
             if (item is not JsonObject mail)
             {
+                yield return string.Empty;
                 continue;
             }
 

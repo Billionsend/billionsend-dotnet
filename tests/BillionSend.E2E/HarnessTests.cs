@@ -208,6 +208,50 @@ public sealed class HarnessTests
         Assert.Equal(17, handler.Refused.Count);
     }
 
+    [Theory]
+    [InlineData("POST", "/emails", "not json")]
+    [InlineData("POST", "/emails", "\"success@simulator.amazonses.com\"")]
+    [InlineData("POST", "/emails", "{\"to\": ")]
+    [InlineData("POST", "/emails/batch", "[1, 2]")]
+    [InlineData("POST", "/emails/batch", "[\"success@simulator.amazonses.com\"]")]
+    [InlineData("POST", "/emails", "{\"to\": 5}")]
+    [InlineData("POST", "/emails", "{\"to\": {\"email\": \"success@simulator.amazonses.com\"}}")]
+    [InlineData("POST", "/emails", "{\"to\": [\"success@simulator.amazonses.com\", null]}")]
+    [InlineData("POST", "/emails", "{\"to\": \"success@simulator.amazonses.com\", \"cc\": [[\"success@simulator.amazonses.com\"]]}")]
+    [InlineData("POST", "/emails", "{\"to\": \"success@simulator.amazonses.com\", \"bcc\": false}")]
+    [InlineData("POST", "/suppressions", "not json")]
+    [InlineData("POST", "/suppressions/batch/add", "[")]
+    [InlineData("POST", "/elsewhere", "not json")]
+    public async Task RefusesASendOrASuppressionWhoseBodyOrRecipientsCannotBeChecked(string method, string path, string body)
+    {
+        var inner = new Answers(_ => Json(200, "{}"));
+        var handler = new LiveHandler(inner, TimeSpan.Zero, 20, 22);
+        using var raw = new HttpClient(handler, disposeHandler: false);
+        using var request = new HttpRequestMessage(new HttpMethod(method), "https://api.test" + path)
+        {
+            Content = new StringContent(body, Encoding.UTF8, "application/json"),
+        };
+        await Assert.ThrowsAsync<LiveGuardException>(() => raw.SendAsync(request));
+        Assert.Equal(0, inner.Calls);
+        Assert.Equal(0, handler.Count);
+        Assert.Single(handler.Refused);
+    }
+
+    [Fact]
+    public async Task LeavesAnUnreadableBodyAloneWhenTheRequestIsNotASend()
+    {
+        // events.send takes the caller's own payload; a request with no body has no recipient.
+        var inner = new Answers(_ => Json(200, "{}"));
+        var handler = new LiveHandler(inner, TimeSpan.Zero, 20, 22);
+        using var raw = new HttpClient(handler, disposeHandler: false);
+        using var events = new HttpRequestMessage(HttpMethod.Post, "https://api.test/events/send") { Content = new StringContent("not json", Encoding.UTF8, "application/json") };
+        await raw.SendAsync(events);
+        using var empty = new HttpRequestMessage(HttpMethod.Post, "https://api.test/emails");
+        await raw.SendAsync(empty);
+        Assert.Equal(2, inner.Calls);
+        Assert.Empty(handler.Refused);
+    }
+
     [Fact]
     public async Task LeavesRequestsThatAreNotSendsAlone()
     {
