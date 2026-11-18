@@ -47,6 +47,41 @@ public sealed class EnvironmentTests : IDisposable
     }
 
     [Theory]
+    [InlineData(" ")]
+    [InlineData("\n")]
+    [InlineData(" \r\n\t ")]
+    public async Task TreatsAWhitespaceOnlyKeyAsMissingWhereverItCameFrom(string value)
+    {
+        Environment.SetEnvironmentVariable("BILLIONSEND_API_KEY", value);
+        Environment.SetEnvironmentVariable("BILLIONSEND_BASE_URL", null);
+        var probe = new Probe();
+        foreach (var options in new[]
+        {
+            new BillionSendOptions { HttpClient = new HttpClient(probe) },
+            new BillionSendOptions { ApiKey = value, HttpClient = new HttpClient(probe) },
+        })
+        {
+            using var client = new BillionSendClient(options);
+            var error = await Assert.ThrowsAsync<AuthenticationException>(() => client.Usage.GetAsync());
+            Assert.Equal("missing_api_key", error.Name);
+        }
+
+        Assert.Empty(probe.Requests);
+    }
+
+    [Fact]
+    public async Task TrimsTheKeyAndTheBaseUrlReadFromTheEnvironment()
+    {
+        Environment.SetEnvironmentVariable("BILLIONSEND_API_KEY", "  bs_env\n");
+        Environment.SetEnvironmentVariable("BILLIONSEND_BASE_URL", "https://env.test/ \r\n");
+        var probe = new Probe();
+        using var client = new BillionSendClient(new BillionSendOptions { HttpClient = new HttpClient(probe) });
+        Assert.Equal("https://env.test", client.BaseUrl);
+        await client.Usage.GetAsync();
+        Assert.Equal("Bearer bs_env", Assert.Single(probe.Requests).Header("authorization"));
+    }
+
+    [Theory]
     [InlineData("")]
     [InlineData(null)]
     public async Task TreatsAnEmptyOrMissingEnvironmentValueAsUnset(string? value)

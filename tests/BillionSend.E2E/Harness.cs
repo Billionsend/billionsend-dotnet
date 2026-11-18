@@ -18,6 +18,142 @@ public sealed class LiveFactAttribute : FactAttribute
     }
 }
 
+/// <summary>A request broke a safety rule of the live run and was not sent.</summary>
+public sealed class LiveGuardException(string message) : Exception(message);
+
+/// <summary>
+/// Two rules the live run holds in code, whatever a scenario writes: mail goes only to the SES
+/// mailbox simulator's success address (or a plus alias of it), so no real person and not even the
+/// simulator's bounce, complaint or suppression-list mailboxes are ever written to; and an address
+/// the run has put on the suppression list is never a recipient (<c>to</c>, <c>cc</c>, <c>bcc</c>)
+/// of any send afterwards, deleted from the list or not.
+/// </summary>
+public sealed class SendGuard
+{
+    private static readonly System.Text.RegularExpressions.Regex Success =
+        new(@"^success(\+[a-z0-9._-]+)?@simulator\.amazonses\.com$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
+
+    private readonly HashSet<string> _suppressed = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Every address this run added to the suppression list.</summary>
+    public IReadOnlyCollection<string> Suppressed => _suppressed;
+
+    /// <summary>The address in <c>Name &lt;address&gt;</c> or in a bare address, trimmed.</summary>
+    public static string Bare(string recipient)
+    {
+        var text = recipient.Trim();
+        var open = text.LastIndexOf('<');
+        var close = text.LastIndexOf('>');
+        return open >= 0 && close > open ? text[(open + 1)..close].Trim() : text;
+    }
+
+    /// <summary>Throws <see cref="LiveGuardException"/> when the request breaks a rule; otherwise notes what it suppresses.</summary>
+    public void Check(Operation? operation, string? body)
+    {
+        if (body is null || !body.TrimStart().StartsWith('[') && !body.TrimStart().StartsWith('{'))
+        {
+            return;
+        }
+
+        JsonNode? json;
+        try
+        {
+            json = JsonNode.Parse(body);
+        }
+        catch (System.Text.Json.JsonException)
+        {
+            return;
+        }
+
+        var key = operation?.Key;
+        if (key is "POST /suppressions" or "POST /suppressions/batch/add")
+        {
+            Note(json);
+            return;
+        }
+
+        // Sending operations carry an Idempotency-Key; events.send has no recipients, only a payload
+        // of the caller's own keys. A route the document does not know is checked as a send.
+        if (operation is not null && (!operation.Idempotent || key == "POST /events/send"))
+        {
+            return;
+        }
+
+        foreach (var recipient in Recipients(json))
+        {
+            var address = Bare(recipient);
+            if (!Success.IsMatch(address))
+            {
+                throw new LiveGuardException($"a recipient is not the simulator's success mailbox: {address.Split('@')[0]}@…");
+            }
+
+            if (_suppressed.Contains(address))
+            {
+                throw new LiveGuardException($"a recipient was put on the suppression list by this run: {address}");
+            }
+        }
+    }
+
+    private void Note(JsonNode? json)
+    {
+        if (json is not JsonObject body)
+        {
+            return;
+        }
+
+        if (body["email"] is JsonValue one && one.TryGetValue<string>(out var email))
+        {
+            _suppressed.Add(Bare(email));
+        }
+
+        if (body["emails"] is JsonArray many)
+        {
+            foreach (var item in many)
+            {
+                if (item is JsonValue value && value.TryGetValue<string>(out var text))
+                {
+                    _suppressed.Add(Bare(text));
+                }
+            }
+        }
+    }
+
+    /// <summary>Every value under a <c>to</c>, <c>cc</c> or <c>bcc</c> key of the body, or of each item of a batch; a value that is not text cannot be checked and is returned as an empty address.</summary>
+    private static IEnumerable<string> Recipients(JsonNode? json)
+    {
+        var items = json is JsonArray batch ? batch.ToList() : [json];
+        foreach (var item in items)
+        {
+            if (item is not JsonObject mail)
+            {
+                continue;
+            }
+
+            foreach (var field in new[] { "to", "cc", "bcc" })
+            {
+                switch (mail[field])
+                {
+                    case null:
+                        break;
+                    case JsonValue single when single.TryGetValue<string>(out var text):
+                        yield return text;
+                        break;
+                    case JsonArray list:
+                        foreach (var entry in list)
+                        {
+                            yield return entry is JsonValue v && v.TryGetValue<string>(out var address) ? address : string.Empty;
+                        }
+
+                        break;
+                    default:
+                        yield return string.Empty;
+                        break;
+                }
+            }
+        }
+    }
+}
+
 /// <summary>The suite was stopped on purpose: two 429s in a row, or the request budget is spent.</summary>
 public sealed class LiveAbort(string message) : Exception(message);
 
@@ -45,6 +181,12 @@ public sealed class LiveHandler(HttpMessageHandler inner, TimeSpan gap, int scen
 
     public List<string> Findings { get; } = [];
 
+    /// <summary>The recipient rules, kept for the whole run: what it suppressed is never mailed afterwards.</summary>
+    public SendGuard Guard { get; } = new();
+
+    /// <summary>Requests the guard refused (none was sent); a live run with any is a failed run.</summary>
+    public List<string> Refused { get; } = [];
+
     /// <summary>The status of the last answer, for a scenario that wants to say what it saw.</summary>
     public int LastStatus { get; private set; }
 
@@ -61,15 +203,6 @@ public sealed class LiveHandler(HttpMessageHandler inner, TimeSpan gap, int scen
         {
             throw new LiveAbort($"The request budget of {(Cleaning ? totalBudget : scenarioBudget)} is spent");
         }
-
-        var wait = gap - (DateTime.UtcNow - _last);
-        if (wait > TimeSpan.Zero)
-        {
-            await Task.Delay(wait, cancellationToken);
-        }
-
-        _last = DateTime.UtcNow;
-        Count++;
 
         string? body = null;
         var headers = new Dictionary<string, string>();
@@ -90,6 +223,28 @@ public sealed class LiveHandler(HttpMessageHandler inner, TimeSpan gap, int scen
 
         var uri = request.RequestUri!;
         var (operation, pathParams) = ContractMock.Match(request.Method.Method, uri.AbsolutePath);
+
+        // Before anything is sent or counted: a request that would mail an address the suite may
+        // not mail, or one it suppressed, never leaves.
+        try
+        {
+            Guard.Check(operation, body);
+        }
+        catch (LiveGuardException refusal)
+        {
+            Refused.Add($"{operation?.Key ?? $"{request.Method} {uri.AbsolutePath}"}: {refusal.Message}");
+            throw;
+        }
+
+        var wait = gap - (DateTime.UtcNow - _last);
+        if (wait > TimeSpan.Zero)
+        {
+            await Task.Delay(wait, cancellationToken);
+        }
+
+        _last = DateTime.UtcNow;
+        Count++;
+
         var label = operation?.Key ?? $"{request.Method} (not in the document)";
         if (operation is null)
         {

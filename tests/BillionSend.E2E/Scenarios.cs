@@ -292,11 +292,12 @@ public sealed class Scenarios
             _r.Expect(!string.IsNullOrEmpty(Id(sent)), "the send is queued");
         });
 
-        await _r.Step("emails.send refuses an invalid recipient as a ValidationException and sends nothing", async () =>
+        await _r.Step("emails.send refuses an unreadable scheduled time as a ValidationException and sends nothing", async () =>
         {
             var error = await Refused<ValidationException>(async () =>
-                await _c.Emails.SendAsync(new { from = Sender, to = "not an address", subject = Tag, text = "x" }));
-            _r.Expect(error.StatusCode is 400 or 422, "a 4xx for an invalid recipient");
+                await _c.Emails.SendAsync(new { from = Sender, to = new[] { Addr("bad-time") }, subject = Tag, text = "x", scheduled_at = "not a time" }));
+            // The recipient is still the simulator's: the send guard refuses any other address before a request goes out.
+            _r.Expect(error.StatusCode is 400 or 422, "a 4xx for a scheduled time that is not one");
             _r.Expect(!string.IsNullOrEmpty(error.RequestId), "the refusal carries the request id");
         });
     }

@@ -71,6 +71,7 @@ public sealed class LiveApiTests(ITestOutputHelper output)
             problems.Add($"stopped: {aborted.Message}");
         }
 
+        problems.AddRange(handler.Refused.Select(refusal => $"refused by the send guard: {refusal}"));
         problems.AddRange(recorder.Leftovers.Select(left => $"left behind: {left}"));
         problems.AddRange(handler.Findings.Distinct().Select(finding => $"finding: {finding}"));
         problems.AddRange(recorder.Results.Where(r => r.Outcome == "FAIL").Select(r => $"step failed: {r.Name}: {r.Detail}"));

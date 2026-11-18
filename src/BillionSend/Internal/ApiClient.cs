@@ -35,8 +35,8 @@ namespace BillionSend.Internal
         {
             // A key read from a file or an environment file usually ends in a newline, which must not reach a header.
             _apiKey = NonEmpty(options.ApiKey?.Trim()) ?? NonEmpty(Environment.GetEnvironmentVariable("BILLIONSEND_API_KEY")?.Trim());
-            var baseUrl = NonEmpty(options.BaseUrl) ??
-                NonEmpty(Environment.GetEnvironmentVariable("BILLIONSEND_BASE_URL")) ??
+            var baseUrl = NonEmpty(options.BaseUrl?.Trim()) ??
+                NonEmpty(Environment.GetEnvironmentVariable("BILLIONSEND_BASE_URL")?.Trim()) ??
                 BillionSendClient.DefaultBaseUrl;
             BaseUrl = baseUrl.TrimEnd('/');
             if (!Uri.TryCreate(BaseUrl, UriKind.Absolute, out var parsed) ||

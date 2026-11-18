@@ -135,6 +135,90 @@ public sealed class HarnessTests
         Assert.True(watch.ElapsedMilliseconds >= 480, $"{watch.ElapsedMilliseconds} ms for three requests");
     }
 
+    private static object Mail(object to, object? cc = null, object? bcc = null) =>
+        new { from = "SDK E2E <sdk-e2e@mail.billionsend.dev>", to, cc, bcc, subject = "s", text = "t" };
+
+    private static (LiveHandler Handler, Answers Inner, BillionSendClient Client) Guarded()
+    {
+        var inner = new Answers(_ => Json(200, "{}"));
+        var handler = new LiveHandler(inner, TimeSpan.Zero, 20, 22);
+        return (handler, inner, Client(handler));
+    }
+
+    [Theory]
+    [InlineData("bounce@simulator.amazonses.com")]
+    [InlineData("complaint@simulator.amazonses.com")]
+    [InlineData("suppressionlist@simulator.amazonses.com")]
+    [InlineData("ooto@simulator.amazonses.com")]
+    [InlineData("ana@example.com")]
+    [InlineData("success@simulator.amazonses.com.evil.test")]
+    [InlineData("evil-success@simulator.amazonses.com")]
+    [InlineData("Ana <ana@example.com>")]
+    [InlineData("success+a b@simulator.amazonses.com")]
+    [InlineData("")]
+    public async Task RefusesAnyRecipientButTheSimulatorsSuccessMailboxBeforeARequestIsSent(string address)
+    {
+        var (handler, inner, client) = Guarded();
+        await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.SendAsync(Mail(address)));
+        await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.SendAsync(Mail("success@simulator.amazonses.com", cc: new[] { address })));
+        await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.SendAsync(Mail("success@simulator.amazonses.com", bcc: address)));
+        await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.BatchAsync(new[] { Mail("success@simulator.amazonses.com"), Mail(new[] { "success@simulator.amazonses.com", address }) }));
+        Assert.Equal(0, inner.Calls);
+        Assert.Equal(0, handler.Count);
+        Assert.Equal(4, handler.Refused.Count);
+    }
+
+    [Theory]
+    [InlineData("success@simulator.amazonses.com")]
+    [InlineData("success+sdk-e2e-dotnet-1a2b3c4d-mail@simulator.amazonses.com")]
+    [InlineData("SUCCESS+Tag@Simulator.Amazonses.com")]
+    [InlineData("SDK E2E <success+x@simulator.amazonses.com>")]
+    public async Task SendsToTheSuccessMailboxAndItsPlusAliases(string address)
+    {
+        var (handler, inner, client) = Guarded();
+        await client.Emails.SendAsync(Mail(address));
+        await client.Emails.BatchAsync(new[] { Mail(new[] { address }, cc: address) });
+        Assert.Equal(2, inner.Calls);
+        Assert.Empty(handler.Refused);
+    }
+
+    [Fact]
+    public async Task NeverSendsToAnAddressTheRunPutOnTheSuppressionList()
+    {
+        var (handler, inner, client) = Guarded();
+        const string single = "success+sdk-e2e-dotnet-x-sup1@simulator.amazonses.com";
+        const string batch = "success+sdk-e2e-dotnet-x-sup2@simulator.amazonses.com";
+        const string clean = "success+sdk-e2e-dotnet-x-ok@simulator.amazonses.com";
+        await client.Suppressions.CreateAsync(new { email = single, origin = "manual" });
+        await client.Suppressions.Batch.AddAsync(new { emails = new[] { batch }, origin = "manual" });
+        Assert.Equal(2, handler.Guard.Suppressed.Count);
+        foreach (var address in new[] { single, batch, single.ToUpperInvariant(), $"Ana <{batch}>" })
+        {
+            await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.SendAsync(Mail(address)));
+            await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.SendAsync(Mail(clean, cc: new[] { address })));
+            await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.SendAsync(Mail(clean, bcc: address)));
+            await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.BatchAsync(new[] { Mail(clean), Mail(address) }));
+        }
+
+        // Taking it off the list again does not make it a recipient: the run never mails it.
+        await client.Suppressions.Batch.RemoveAsync(new { emails = new[] { single, batch } });
+        await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.SendAsync(Mail(single)));
+        await client.Emails.SendAsync(Mail(clean));
+        Assert.Equal(4, inner.Calls);
+        Assert.Equal(17, handler.Refused.Count);
+    }
+
+    [Fact]
+    public async Task LeavesRequestsThatAreNotSendsAlone()
+    {
+        // events.send has a payload of the caller's own keys; an automation's connections have a "to": neither is a recipient.
+        var (handler, inner, client) = Guarded();
+        await client.Events.SendAsync(new { @event = "e", contact_id = Spec.SampleUuid, payload = new { to = "ana@example.com" } });
+        await client.Segments.CreateAsync(new { name = "to ana@example.com" });
+        Assert.Equal(2, inner.Calls);
+        Assert.Empty(handler.Refused);
+    }
+
     [Fact]
     public void TakesSecretsOutOfText()
     {
