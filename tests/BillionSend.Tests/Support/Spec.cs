@@ -166,36 +166,36 @@ public static class Spec
             case "boolean":
                 return JsonValue.Create(false);
             case "array":
-            {
-                var count = Math.Max((int?)s["minItems"] ?? 1, 1);
-                if ((int?)s["maxItems"] is int maxItems)
                 {
-                    count = Math.Min(count, maxItems);
-                }
+                    var count = Math.Max((int?)s["minItems"] ?? 1, 1);
+                    if ((int?)s["maxItems"] is int maxItems)
+                    {
+                        count = Math.Min(count, maxItems);
+                    }
 
-                var array = new JsonArray();
-                for (var i = 0; i < count; i++)
-                {
-                    array.Add(Example(s["items"] ?? new JsonObject(), full, depth + 1));
-                }
+                    var array = new JsonArray();
+                    for (var i = 0; i < count; i++)
+                    {
+                        array.Add(Example(s["items"] ?? new JsonObject(), full, depth + 1));
+                    }
 
-                return array;
-            }
+                    return array;
+                }
 
             case "object":
-            {
-                var required = (s["required"] as JsonArray)?.Select(r => (string)r!).ToHashSet() ?? [];
-                var obj = new JsonObject();
-                foreach (var pair in s["properties"] as JsonObject ?? new JsonObject())
                 {
-                    if (full || required.Contains(pair.Key))
+                    var required = (s["required"] as JsonArray)?.Select(r => (string)r!).ToHashSet() ?? [];
+                    var obj = new JsonObject();
+                    foreach (var pair in s["properties"] as JsonObject ?? new JsonObject())
                     {
-                        obj[pair.Key] = Example(pair.Value, full, depth + 1);
+                        if (full || required.Contains(pair.Key))
+                        {
+                            obj[pair.Key] = Example(pair.Value, full, depth + 1);
+                        }
                     }
-                }
 
-                return obj;
-            }
+                    return obj;
+                }
 
             default:
                 return null;

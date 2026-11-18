@@ -23,6 +23,8 @@ jobs:
       - name: Generated code matches the OpenAPI snapshot
         run: python3 scripts/generate.py --check
       - run: dotnet restore
+      - name: Formatting (dotnet format changes nothing)
+        run: dotnet format --verify-no-changes --no-restore
       - run: dotnet build --no-restore -c Release
       - run: dotnet test --no-build -c Release --settings tests/coverage.runsettings --collect:"XPlat Code Coverage" --results-directory TestResults
       - name: Coverage gate (95% of lines and branches of the hand-written runtime, every generated method called)
