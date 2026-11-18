@@ -269,6 +269,55 @@ public sealed class UnitGapTests
         }
     }
 
+    [Fact]
+    public void ReadsASecretAndHeadersThatCameWithWhitespaceAroundThem()
+    {
+        // A secret read from a file or an environment file ends in a newline; a proxy may pad a header value.
+        var payload = Encoding.UTF8.GetBytes("{\"type\":\"email.sent\"}");
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+        var good = Mac(WhSecret, "msg_1", timestamp, payload);
+        foreach (var secret in new[] { WhSecret + "\n", WhSecret + "\r\n", "  " + WhSecret + " \t" })
+        {
+            Assert.Equal("email.sent", (string?)Webhook.Verify(payload, Signed(good, timestamp), secret)["type"]);
+        }
+
+        var padded = new Dictionary<string, string>
+        {
+            ["webhook-id"] = " msg_1\n",
+            ["webhook-timestamp"] = $" {timestamp}\r\n",
+            ["webhook-signature"] = $"\t{good}\n",
+        };
+        Assert.Equal("email.sent", (string?)Webhook.Verify(payload, padded, WhSecret)["type"]);
+    }
+
+    [Fact]
+    public void SplitsTheSignaturesOfARotationOnAnyWhitespace()
+    {
+        var payload = Encoding.UTF8.GetBytes("{\"type\":\"email.sent\"}");
+        var timestamp = DateTimeOffset.UtcNow.ToUnixTimeSeconds().ToString();
+        var good = Mac(WhSecret, "msg_1", timestamp, payload);
+        var other = Mac("whsec_" + Convert.ToBase64String(new byte[32]), "msg_1", timestamp, payload);
+        foreach (var header in new[] { $"{other}\t{good}", $"{other}\n{good}", $"{other} \r\n {good}", $"{good}\t{other}" })
+        {
+            Assert.Equal("email.sent", (string?)Webhook.Verify(payload, Signed(header, timestamp), WhSecret)["type"]);
+        }
+    }
+
+    [Fact]
+    public void LeavesAnEmptyListOutOfTheQueryAndKeepsTheRest()
+    {
+        var empty = new Dictionary<string, object?>
+        {
+            ["domain_id"] = Array.Empty<string>(),
+            ["metrics"] = new List<string>(),
+            ["only_nulls"] = new string?[] { null, null },
+            ["limit"] = 5,
+        };
+        Assert.Equal("?limit=5", Urls.QueryString(empty));
+        Assert.Equal(string.Empty, Urls.QueryString(new Dictionary<string, object?> { ["domain_id"] = Array.Empty<string>() }));
+        Assert.Equal("?metrics=a%2Cb", Urls.QueryString(new Dictionary<string, object?> { ["metrics"] = new[] { "a", "b" } }));
+    }
+
     [Theory]
     [InlineData("")]
     [InlineData("v1,")]

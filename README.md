@@ -130,7 +130,13 @@ await foreach (var item in events)
         continue;
     }
 
-    var ids = ((InboxStreamEvent)item).Payload;
+    if (item is not InboxStreamEvent { Event: "inbox.email.received" } received)
+    {
+        // `types` does not filter inbox.deleted and inbox.expired, and they carry no thread.
+        continue;
+    }
+
+    var ids = received.Payload;
     var threadId = (string?)ids?["thread_id"];
     var emailId = (string?)ids?["email_id"];
     if (threadId is null || emailId is null)
@@ -167,7 +173,7 @@ var code = await client.Inboxes.Codes.LatestAsync("support@acme.dev", new Dictio
 - `InboxStreamEvent`: `Id`, `Event` and `Data`, where `Event` is the webhook event name (`inbox.email.received`, `inbox.thread.created`, `inbox.draft.sent`, `email.received`, …) and `Data` is `{ type, created_at, inbox_id, data }`, the webhook payload's metadata; `Payload` is its inner `data` with the ids to read next (`thread_id`, `email_id`, `draft_id`).
 - `StreamGapEvent`: `Event` is `stream.gap`, `Id` is `null` and `Reason` says why: the stream resumed from further back than the server keeps (24 hours), so events may be missing and the lists should be read again. One stream hands it out once per position.
 
-When the connection drops (the server also closes every stream about every ten minutes), the stream reconnects with `Last-Event-ID` and replays what it missed before the live events. It gives up after `MaxReconnects` failures in a row (default 5) with an `ApiConnectionException`; a refusal a retry cannot fix (a revoked key) is thrown as its own type. One inbox's stream ends after that inbox's `inbox.deleted` or `inbox.expired`.
+When the connection drops (the server also closes every stream about every ten minutes), the stream reconnects with `Last-Event-ID` and replays what it missed before the live events. A connection that sends nothing at all for `IdleTimeout` (default 45 seconds; the server writes a keepalive every 15) is taken for dead, as when a NAT or proxy drops it without a reset, and is reconnected the same way; `TimeSpan.Zero` turns this off. It gives up after `MaxReconnects` failures in a row (default 5) with an `ApiConnectionException`; a refusal a retry cannot fix (a revoked key) is thrown as its own type. One inbox's stream ends after that inbox's `inbox.deleted` or `inbox.expired`.
 
 ```csharp
 await using var stream = await client.Inboxes.Events.StreamAsync(

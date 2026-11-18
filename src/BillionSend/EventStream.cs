@@ -216,7 +216,7 @@ namespace BillionSend
                     if (connection is not null)
                     {
                         var events = ServerSentEvents
-                            .ParseAsync(connection.Body, ms => _delay = TimeSpan.FromMilliseconds(ms), id => LastEventId = id, LastEventId, token)
+                            .ParseAsync(connection.Body, ms => _delay = TimeSpan.FromMilliseconds(ms), id => LastEventId = id, LastEventId, token, _options.IdleTimeout)
                             .GetAsyncEnumerator(token);
                         try
                         {
@@ -411,7 +411,8 @@ namespace BillionSend
             Action<int> onRetry,
             Action<string> onId,
             string? initialId,
-            [EnumeratorCancellation] CancellationToken cancellationToken)
+            [EnumeratorCancellation] CancellationToken cancellationToken,
+            TimeSpan idleTimeout = default)
         {
             var decoder = new UTF8Encoding(false).GetDecoder();
             var bytes = new byte[8192];
@@ -421,7 +422,21 @@ namespace BillionSend
             var parser = new LineParser(initialId, onRetry, onId);
             while (true)
             {
-                var read = await body.ReadAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
+                int read;
+                if (idleTimeout > TimeSpan.Zero && idleTimeout != Timeout.InfiniteTimeSpan)
+                {
+                    // Nothing at all, not even the server's keepalive comment, for this long: the
+                    // connection is dead (a NAT or proxy dropped it without a reset), so end it as
+                    // a drop and let the stream reconnect from its cursor.
+                    using var idle = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                    idle.CancelAfter(idleTimeout);
+                    read = await body.ReadAsync(bytes.AsMemory(), idle.Token).ConfigureAwait(false);
+                }
+                else
+                {
+                    read = await body.ReadAsync(bytes.AsMemory(), cancellationToken).ConfigureAwait(false);
+                }
+
                 var final = read == 0;
                 var count = decoder.GetChars(bytes, 0, read, chars, 0, flush: final);
                 buffer.Append(chars, 0, count);

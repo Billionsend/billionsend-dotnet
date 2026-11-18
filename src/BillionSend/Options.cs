@@ -115,6 +115,15 @@ namespace BillionSend
         /// <summary>Reconnects in a row that fail to open before giving up (default 5); one that opens resets the count.</summary>
         public int MaxReconnects { get; set; } = 5;
 
+        /// <summary>
+        /// How long a connection may go without a single byte before it is taken for dead and
+        /// reconnected with <c>Last-Event-ID</c> (default 45 seconds, three of the server's 15-second
+        /// keepalives). A NAT or proxy that drops a connection without a reset would otherwise leave
+        /// the loop waiting for ever. <see cref="TimeSpan.Zero"/> or
+        /// <see cref="System.Threading.Timeout.InfiniteTimeSpan"/> turns it off.
+        /// </summary>
+        public TimeSpan IdleTimeout { get; set; } = TimeSpan.FromSeconds(45);
+
         /// <summary>The wait before reconnecting (default 1 second; a server <c>retry</c> field overrides it).</summary>
         public TimeSpan ReconnectDelay { get; set; } = TimeSpan.FromSeconds(1);
     }

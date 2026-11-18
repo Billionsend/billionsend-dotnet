@@ -116,7 +116,7 @@ public sealed class WebhookTests
             "whsec_short",
             NewSecret(65),
             "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaS",
-            "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw ",
+            "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2La LaSw",
         })
         {
             Assert.Equal("The webhook secret is not a whsec_ secret", Failure(() => Webhook.Verify(Payload, Headers(), secret, AtVector)).Message);

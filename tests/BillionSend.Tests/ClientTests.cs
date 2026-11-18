@@ -93,6 +93,40 @@ public sealed class ClientTests : MockTest
     }
 
     [Fact]
+    public void ListsInTheReadmeExactlyTheOperationsThatHonourAnIdempotencyKey()
+    {
+        var readme = File.ReadAllText(Path.Combine(Spec.RepositoryRoot, "README.md"));
+        var start = readme.IndexOf("The sending operations (", StringComparison.Ordinal);
+        Assert.True(start >= 0, "README has no list of the sending operations");
+        var end = readme.IndexOf(") always send", start, StringComparison.Ordinal);
+        Assert.True(end > start, "README's list of the sending operations is not closed");
+        var listed = new HashSet<string>(StringComparer.Ordinal);
+        var prefix = string.Empty;
+        foreach (System.Text.RegularExpressions.Match token in System.Text.RegularExpressions.Regex.Matches(readme[start..end], "`([^`]+)`"))
+        {
+            var name = token.Groups[1].Value;
+            var dot = name.LastIndexOf('.');
+            if (dot >= 0)
+            {
+                prefix = name[..(dot + 1)];
+            }
+
+            listed.Add(prefix + name[(dot + 1)..]);
+        }
+
+        static string Pascal(string part) => char.ToUpperInvariant(part[0]) + part[1..];
+        var expected = Spec.Operations
+            .Where(o => o.Idempotent)
+            .Select(o =>
+            {
+                var parts = o.OperationId.Split('.');
+                return string.Join(".", parts.Select(Pascal)) + "Async";
+            })
+            .ToHashSet(StringComparer.Ordinal);
+        Assert.Equal(expected.OrderBy(x => x, StringComparer.Ordinal), listed.OrderBy(x => x, StringComparer.Ordinal));
+    }
+
+    [Fact]
     public async Task SendsANewIdempotencyKeyWithEveryCallOfASendingOperationAndNoneElsewhere()
     {
         using var client = Client();

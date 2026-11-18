@@ -334,6 +334,105 @@ public sealed class WireTests
     }
 
     [Fact]
+    public async Task SendsNothingWhenTheCallersTokenIsAlreadyCancelled()
+    {
+        var probe = new Probe();
+        using var client = probe.Client();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.Segments.GetAsync("s", cancellationToken: cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.Emails.SendAsync(
+            new { from = "a@x.com", to = "b@x.com", subject = "s", text = "t" },
+            cancellationToken: cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(() => client.Inboxes.Events.StreamAsync(cancellationToken: cts.Token));
+        await Assert.ThrowsAnyAsync<OperationCanceledException>(async () =>
+        {
+            await foreach (var _ in client.Contacts.ListAllAsync(cancellationToken: cts.Token))
+            {
+            }
+        });
+        Assert.Empty(probe.Requests);
+    }
+
+    [Fact]
+    public async Task LeavesEmptyListsOutOfTheQueryOnTheWire()
+    {
+        var probe = new Probe();
+        using var client = probe.Client();
+        await client.Emails.Metrics.GetAsync(new Dictionary<string, object?>
+        {
+            ["metrics"] = Array.Empty<string>(),
+            ["domain_id"] = new List<string>(),
+            ["start_date"] = "2026-11-01",
+        });
+        Assert.Equal("/emails/metrics?start_date=2026-11-01", Assert.Single(probe.Requests).Target);
+    }
+
+    [Fact]
+    public async Task ReadsAnApiKeyWithAnEnvironmentFilesNewlineAtItsEnd()
+    {
+        var probe = new Probe();
+        using var client = probe.Client(o => o.ApiKey = " bs_probe\r\n");
+        await client.Segments.GetAsync("s");
+        Assert.Equal("Bearer bs_probe", Assert.Single(probe.Requests).Header("authorization"));
+    }
+
+    [Theory]
+    [InlineData("Idempotency-Key", "welcome/订单-1")]
+    [InlineData("Idempotency-Key", "a\r\nX-Injected: 1")]
+    [InlineData("X-My-Header", "caf\u00e9")]
+    [InlineData("X-My-Header", "a\u007fb")]
+    public async Task RefusesAHeaderValueThatCannotTravelBeforeSendingAnythingAndSaysWhichHeader(string name, string value)
+    {
+        // The transport would fail the request as a network error, and a keyed send would be retried as one.
+        var probe = new Probe();
+        using var client = probe.Client();
+        var error = await Assert.ThrowsAsync<BillionSendException>(() => client.Emails.SendAsync(
+            new { from = "a@x.com", to = "b@x.com", subject = "s", text = "t" },
+            new IdempotentRequestOptions { Headers = new Dictionary<string, string> { [name] = value } }));
+        Assert.IsNotType<ApiConnectionException>(error);
+        Assert.Contains($"\"{name}\"", error.Message);
+        Assert.Null(error.StatusCode);
+        Assert.Empty(probe.Requests);
+    }
+
+    [Fact]
+    public async Task RefusesAnIdempotencyKeyOptionWithNonAsciiCharacters()
+    {
+        var probe = new Probe();
+        using var client = probe.Client();
+        var error = await Assert.ThrowsAsync<BillionSendException>(() => client.Emails.SendAsync(
+            new { from = "a@x.com", to = "b@x.com", subject = "s", text = "t" },
+            new IdempotentRequestOptions { IdempotencyKey = "welcome/订单-1" }));
+        Assert.Contains("\"Idempotency-Key\"", error.Message);
+        Assert.Empty(probe.Requests);
+    }
+
+    [Fact]
+    public async Task RefusesDefaultHeadersAndKeysTheTransportCouldNotSend()
+    {
+        var probe = new Probe();
+        using var client = probe.Client(o => o.Headers = new Dictionary<string, string> { ["X-Team"] = "é" });
+        var error = await Assert.ThrowsAsync<BillionSendException>(() => client.Segments.GetAsync("s"));
+        Assert.Contains("\"X-Team\"", error.Message);
+        Assert.Empty(probe.Requests);
+    }
+
+    [Fact]
+    public async Task SendsAKeyReadFromAFileThroughTheRealTransportOnceTrimmed()
+    {
+        using var server = new LoopbackServer();
+        using var client = new BillionSendClient(new BillionSendOptions
+        {
+            ApiKey = "bs_real\n",
+            BaseUrl = server.Url,
+            MaxRetries = 0,
+        });
+        await client.Segments.GetAsync("s");
+        Assert.Contains("authorization: Bearer bs_real\r\n", server.Requests.Single(), StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
     public async Task LetsACallTimeOutOnItsOwnTimeoutNotTheClients()
     {
         var probe = new Probe();
@@ -558,5 +657,77 @@ public sealed class MultipartWireTests
         var upload = new FileUpload("a.csv", [1, 2]);
         Assert.Equal("text/csv", upload.ContentType);
         Assert.Equal(new byte[] { 1, 2 }, upload.Content);
+    }
+}
+
+/// <summary>A server on a real socket that answers every request with an empty JSON object, for what only the real transport decides.</summary>
+internal sealed class LoopbackServer : IDisposable
+{
+    private readonly System.Net.Sockets.TcpListener _listener = new(System.Net.IPAddress.Loopback, 0);
+    private readonly List<string> _requests = [];
+
+    public LoopbackServer()
+    {
+        _listener.Start();
+        _ = Task.Run(Serve);
+    }
+
+    public string Url => $"http://127.0.0.1:{((System.Net.IPEndPoint)_listener.LocalEndpoint).Port}";
+
+    public IReadOnlyList<string> Requests
+    {
+        get
+        {
+            lock (_requests)
+            {
+                return _requests.ToArray();
+            }
+        }
+    }
+
+    public void Dispose() => _listener.Stop();
+
+    private async Task Serve()
+    {
+        try
+        {
+            while (true)
+            {
+                var socket = await _listener.AcceptTcpClientAsync();
+                _ = Task.Run(() => Answer(socket));
+            }
+        }
+        catch (Exception)
+        {
+            // Stopped.
+        }
+    }
+
+    private async Task Answer(System.Net.Sockets.TcpClient socket)
+    {
+        using (socket)
+        {
+            var stream = socket.GetStream();
+            var received = new StringBuilder();
+            var buffer = new byte[4096];
+            while (!received.ToString().Contains("\r\n\r\n", StringComparison.Ordinal))
+            {
+                var read = await stream.ReadAsync(buffer);
+                if (read == 0)
+                {
+                    return;
+                }
+
+                received.Append(Encoding.Latin1.GetString(buffer, 0, read));
+            }
+
+            lock (_requests)
+            {
+                _requests.Add(received.ToString());
+            }
+
+            await stream.WriteAsync(Encoding.ASCII.GetBytes(
+                "HTTP/1.1 200 OK\r\ncontent-type: application/json\r\ncontent-length: 2\r\nconnection: close\r\n\r\n{}"));
+        }
     }
 }

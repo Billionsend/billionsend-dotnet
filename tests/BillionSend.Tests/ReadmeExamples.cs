@@ -101,7 +101,13 @@ internal static class ReadmeExamples
                 continue;
             }
 
-            var ids = ((InboxStreamEvent)item).Payload;
+            if (item is not InboxStreamEvent { Event: "inbox.email.received" } received)
+            {
+                // `types` does not filter inbox.deleted and inbox.expired, and they carry no thread.
+                continue;
+            }
+
+            var ids = received.Payload;
             var threadId = (string?)ids?["thread_id"];
             var emailId = (string?)ids?["email_id"];
             if (threadId is null || emailId is null)

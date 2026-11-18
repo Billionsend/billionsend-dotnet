@@ -92,9 +92,10 @@ namespace BillionSend
                 throw new ArgumentNullException(nameof(header));
             }
 
-            var id = header("webhook-id");
-            var timestamp = header("webhook-timestamp");
-            var signature = header("webhook-signature");
+            // A proxy may pad a header value, and a secret read from a file ends in a newline.
+            var id = header("webhook-id")?.Trim();
+            var timestamp = header("webhook-timestamp")?.Trim();
+            var signature = header("webhook-signature")?.Trim();
             if (string.IsNullOrEmpty(id) || string.IsNullOrEmpty(timestamp) || string.IsNullOrEmpty(signature))
             {
                 throw new WebhookVerificationException(
@@ -125,7 +126,7 @@ namespace BillionSend
             var expected = HMACSHA256.HashData(SecretKey(secret), signed);
 
             var matched = false;
-            foreach (var candidate in signature.Split(' '))
+            foreach (var candidate in signature.Split((char[]?)null, StringSplitOptions.RemoveEmptyEntries))
             {
                 var comma = candidate.IndexOf(',');
                 if (comma == -1 || candidate.Substring(0, comma) != "v1")
@@ -158,8 +159,9 @@ namespace BillionSend
         /// <summary>The key of a <c>whsec_</c> secret: canonical base64 of 24 to 64 bytes, as the dashboard and the API hand it out.</summary>
         private static byte[] SecretKey(string secret)
         {
-            var encoded = secret is not null && secret.StartsWith(SecretPrefix, StringComparison.Ordinal)
-                ? secret.Substring(SecretPrefix.Length)
+            var trimmed = secret?.Trim();
+            var encoded = trimmed is not null && trimmed.StartsWith(SecretPrefix, StringComparison.Ordinal)
+                ? trimmed.Substring(SecretPrefix.Length)
                 : null;
             var key = encoded is null ? null : DecodeBase64(encoded);
             if (encoded is null ||

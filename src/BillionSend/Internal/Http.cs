@@ -110,7 +110,14 @@ namespace BillionSend.Internal
                 string text;
                 if (pair.Value is not string && pair.Value is not JsonNode && pair.Value is IEnumerable list)
                 {
-                    text = string.Join(",", list.Cast<object?>().Where(item => item is not null).Select(item => Format(item!)));
+                    var items = list.Cast<object?>().Where(item => item is not null).Select(item => Format(item!)).ToList();
+                    if (items.Count == 0)
+                    {
+                        // An empty list is no filter: "key=" would be an empty id.
+                        continue;
+                    }
+
+                    text = string.Join(",", items);
                 }
                 else
                 {

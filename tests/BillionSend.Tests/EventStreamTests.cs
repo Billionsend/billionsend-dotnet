@@ -286,6 +286,102 @@ public sealed class EventStreamTests : MockTest
     }
 
     [Fact]
+    public async Task ReconnectsFromTheCursorWhenAConnectionGoesSilentWithoutClosing()
+    {
+        // A NAT or proxy that drops the connection sends no reset: the first stream stays open and
+        // says nothing, not even the server's keepalive comments.
+        Mock.Stream(One, stream =>
+        {
+            stream.Write("retry: 1000\n\nid: 7.1.1\n\n");
+            return Task.CompletedTask; // open, and never writes again
+        });
+        Mock.Stream(One, stream =>
+        {
+            stream.Write("id: 7.1.2\nevent: inbox.email.received\ndata: {\"n\":2}\n\n");
+            return Task.CompletedTask;
+        });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamInboxAsync(
+            Inbox,
+            null,
+            new EventStreamOptions { IdleTimeout = TimeSpan.FromMilliseconds(150), ReconnectDelay = TimeSpan.FromMilliseconds(1) });
+        using var bound = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await foreach (var item in stream.WithCancellation(bound.Token))
+        {
+            Assert.Equal(2, (int)item.Data!["n"]!);
+            break;
+        }
+
+        var hits = Mock.HitsFor(One);
+        Assert.Equal([null, "7.1.1"], hits.Select(hit => hit.Header("last-event-id")));
+    }
+
+    [Fact]
+    public async Task KeepsAConnectionThatSendsItsKeepalivesWithinTheIdleTimeout()
+    {
+        Mock.Stream(One, async stream =>
+        {
+            for (var i = 0; i < 6; i++)
+            {
+                await Task.Delay(60);
+                stream.Write(": keepalive\n\n");
+            }
+
+            stream.Write("id: 5\ndata: {\"n\":5}\n\n");
+        });
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamInboxAsync(
+            Inbox,
+            null,
+            new EventStreamOptions { IdleTimeout = TimeSpan.FromMilliseconds(200) });
+        using var bound = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        await foreach (var item in stream.WithCancellation(bound.Token))
+        {
+            Assert.Equal(5, (int)item.Data!["n"]!);
+            break;
+        }
+
+        Assert.Single(Mock.HitsFor(One));
+    }
+
+    [Fact]
+    public async Task EndsTheLoopOnAnIdleConnectionWhenReconnectingIsOff()
+    {
+        Mock.Stream(One, _ => Task.CompletedTask);
+        using var client = Client();
+        await using var stream = await client.Inboxes.Events.StreamInboxAsync(
+            Inbox,
+            null,
+            new EventStreamOptions { IdleTimeout = TimeSpan.FromMilliseconds(100), Reconnect = false });
+        using var bound = new CancellationTokenSource(TimeSpan.FromSeconds(10));
+        Assert.Empty(await DrainWith(stream, bound.Token));
+        Assert.Single(Mock.HitsFor(One));
+    }
+
+    [Fact]
+    public async Task WaitsThreeKeepalivesOfTheServerByDefaultAndRefusesANegativeIdleTimeout()
+    {
+        // The server writes a keepalive every 15 seconds.
+        Assert.Equal(TimeSpan.FromSeconds(45), new EventStreamOptions().IdleTimeout);
+        using var client = Client();
+        await Assert.ThrowsAsync<ArgumentOutOfRangeException>(() => client.Inboxes.Events.StreamInboxAsync(
+            Inbox,
+            null,
+            new EventStreamOptions { IdleTimeout = TimeSpan.FromSeconds(-1) }));
+    }
+
+    private static async Task<List<InboxStreamItem>> DrainWith(EventStream stream, CancellationToken token)
+    {
+        var items = new List<InboxStreamItem>();
+        await foreach (var item in stream.WithCancellation(token))
+        {
+            items.Add(item);
+        }
+
+        return items;
+    }
+
+    [Fact]
     public async Task WaitsTheRetryAfterOfARefusedReconnectAndThrowsTheLastRefusalWhenTheyRunOut()
     {
         Mock.Stream(Team, stream =>

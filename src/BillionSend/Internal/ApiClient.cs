@@ -33,7 +33,8 @@ namespace BillionSend.Internal
 
         public ApiClient(BillionSendOptions options)
         {
-            _apiKey = NonEmpty(options.ApiKey) ?? NonEmpty(Environment.GetEnvironmentVariable("BILLIONSEND_API_KEY"));
+            // A key read from a file or an environment file usually ends in a newline, which must not reach a header.
+            _apiKey = NonEmpty(options.ApiKey?.Trim()) ?? NonEmpty(Environment.GetEnvironmentVariable("BILLIONSEND_API_KEY")?.Trim());
             var baseUrl = NonEmpty(options.BaseUrl) ??
                 NonEmpty(Environment.GetEnvironmentVariable("BILLIONSEND_BASE_URL")) ??
                 BillionSendClient.DefaultBaseUrl;
@@ -154,6 +155,11 @@ namespace BillionSend.Internal
             CancellationToken cancellationToken)
         {
             options ??= new EventStreamOptions();
+            if (options.IdleTimeout < TimeSpan.Zero && options.IdleTimeout != System.Threading.Timeout.InfiniteTimeSpan)
+            {
+                throw new ArgumentOutOfRangeException(nameof(options), "IdleTimeout must be positive, zero or Timeout.InfiniteTimeSpan");
+            }
+
             var first = await OpenStreamAsync(
                 call,
                 options.LastEventId,
@@ -174,6 +180,19 @@ namespace BillionSend.Internal
             {
                 _http.Dispose();
             }
+        }
+
+        private static bool IsSendable(string value)
+        {
+            foreach (var c in value)
+            {
+                if (c != '\t' && (c < ' ' || c > '~'))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static string? NonEmpty(string? value) => string.IsNullOrEmpty(value) ? null : value;
@@ -267,6 +286,17 @@ namespace BillionSend.Internal
             else
             {
                 headers.Remove("Authorization");
+            }
+
+            // The transport would fail such a header as a network error, which a keyed send retries
+            // as one: say what is wrong before anything is sent.
+            foreach (var pair in headers)
+            {
+                if (!IsSendable(pair.Value))
+                {
+                    throw new BillionSendException(
+                        $"Invalid header \"{pair.Key}\": a value may hold only printable ASCII characters");
+                }
             }
 
             var keyed = headers.ContainsKey("Idempotency-Key");
