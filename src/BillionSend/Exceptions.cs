@@ -77,7 +77,12 @@ namespace BillionSend
         }
     }
 
-    /// <summary>403: the key, its scope, the role or the plan does not allow this.</summary>
+    /// <summary>
+    /// 403: the key, its scope, the role or the plan does not allow this. <see cref="BillionSendException.Name"/>
+    /// tells which: <c>sending_paused</c> is the whole team paused by its deliverability,
+    /// <c>domain_sending_paused</c> is one sending domain paused (the team's other domains keep
+    /// sending), <c>restricted_api_key</c> a key that may not do this.
+    /// </summary>
     public class PermissionDeniedException : BillionSendException
     {
         /// <inheritdoc cref="BillionSendException(string, string?, int?, string?, Exception?)"/>

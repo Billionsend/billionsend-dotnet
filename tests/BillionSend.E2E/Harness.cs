@@ -25,8 +25,8 @@ public sealed class LiveGuardException(string message) : Exception(message);
 /// Two rules the live run holds in code, whatever a scenario writes: mail goes only to the SES
 /// mailbox simulator's success address (or a plus alias of it), so no real person and not even the
 /// simulator's bounce, complaint or suppression-list mailboxes are ever written to; and an address
-/// the run has put on the suppression list is never a recipient (<c>to</c>, <c>cc</c>, <c>bcc</c>)
-/// of any send afterwards, deleted from the list or not.
+/// the run has put on the suppression list, or any address at a domain it has put there, is never a
+/// recipient (<c>to</c>, <c>cc</c>, <c>bcc</c>) of any send afterwards, deleted from the list or not.
 /// </summary>
 public sealed class SendGuard
 {
@@ -34,9 +34,13 @@ public sealed class SendGuard
         new(@"^success(\+[a-z0-9._-]+)?@simulator\.amazonses\.com$", System.Text.RegularExpressions.RegexOptions.IgnoreCase | System.Text.RegularExpressions.RegexOptions.CultureInvariant);
 
     private readonly HashSet<string> _suppressed = new(StringComparer.OrdinalIgnoreCase);
+    private readonly HashSet<string> _suppressedDomains = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>Every address this run added to the suppression list.</summary>
     public IReadOnlyCollection<string> Suppressed => _suppressed;
+
+    /// <summary>Every domain this run added to the suppression list (an entry that names a domain has no address).</summary>
+    public IReadOnlyCollection<string> SuppressedDomains => _suppressedDomains;
 
     /// <summary>The address in <c>Name &lt;address&gt;</c> or in a bare address, trimmed.</summary>
     public static string Bare(string recipient)
@@ -97,6 +101,11 @@ public sealed class SendGuard
             {
                 throw new LiveGuardException($"a recipient was put on the suppression list by this run: {address}");
             }
+
+            if (_suppressedDomains.Contains(address[(address.LastIndexOf('@') + 1)..]))
+            {
+                throw new LiveGuardException($"a recipient is at a domain the run put on the suppression list: {address.Split('@')[0]}@…");
+            }
         }
     }
 
@@ -119,6 +128,22 @@ public sealed class SendGuard
                 if (item is JsonValue value && value.TryGetValue<string>(out var text))
                 {
                     _suppressed.Add(Bare(text));
+                }
+            }
+        }
+
+        if (body["domain"] is JsonValue oneDomain && oneDomain.TryGetValue<string>(out var domain))
+        {
+            _suppressedDomains.Add(domain.Trim());
+        }
+
+        if (body["domains"] is JsonArray domains)
+        {
+            foreach (var item in domains)
+            {
+                if (item is JsonValue value && value.TryGetValue<string>(out var text))
+                {
+                    _suppressedDomains.Add(text.Trim());
                 }
             }
         }

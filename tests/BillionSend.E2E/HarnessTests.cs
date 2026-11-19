@@ -208,6 +208,27 @@ public sealed class HarnessTests
         Assert.Equal(17, handler.Refused.Count);
     }
 
+    [Fact]
+    public async Task NeverSendsToADomainTheRunPutOnTheSuppressionList()
+    {
+        var (handler, inner, client) = Guarded();
+        const string clean = "success+sdk-e2e-dotnet-x-dom@simulator.amazonses.com";
+        // An entry for a domain has no email: it is a valid body, and it blocks nothing the run sends to.
+        await client.Suppressions.CreateAsync(new { domain = "other.example", origin = "manual" });
+        await client.Suppressions.Batch.AddAsync(new { domains = new[] { "another.example" } });
+        Assert.Empty(handler.Guard.Suppressed);
+        Assert.Equal(2, handler.Guard.SuppressedDomains.Count);
+        await client.Emails.SendAsync(Mail(clean));
+        Assert.Equal(3, inner.Calls);
+
+        // A domain that holds the run's recipients is never mailed afterwards, however it was suppressed.
+        await client.Suppressions.CreateAsync(new { domain = "Simulator.Amazonses.com" });
+        await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.SendAsync(Mail(clean)));
+        await Assert.ThrowsAsync<LiveGuardException>(() => client.Emails.BatchAsync(new[] { Mail(clean) }));
+        Assert.Equal(4, inner.Calls);
+        Assert.Equal(2, handler.Refused.Count);
+    }
+
     [Theory]
     [InlineData("POST", "/emails", "not json")]
     [InlineData("POST", "/emails", "\"success@simulator.amazonses.com\"")]

@@ -154,6 +154,17 @@ internal static class ReadmeExamples
         }
     }
 
+    public static async Task Suppressions(BillionSendClient client)
+    {
+        await client.Suppressions.CreateAsync(new { domain = "spam.example" });
+        await client.Suppressions.Batch.AddAsync(new { emails = new[] { "a@example.com" }, domains = new[] { "junk.example" } });
+
+        await foreach (var entry in client.Suppressions.ListAllAsync(new Dictionary<string, object?> { ["kind"] = "all" }))
+        {
+            Console.WriteLine((string?)entry["email"] ?? (string?)entry["domain"]);
+        }
+    }
+
     public static async Task Errors(BillionSendClient client, string id)
     {
         try
@@ -290,6 +301,17 @@ public sealed class ReadmeRunTests : Support.MockTest
         Assert.Equal("GET /inboxes/events", hit.Key);
         Assert.Equal("inbox.email.received,inbox.thread.created", hit.Query["types"]);
         Assert.Equal("1.1.1", hit.Header("last-event-id"));
+    }
+
+    [Fact]
+    public async Task RunsTheSuppressionsExample()
+    {
+        using var client = Client();
+        await ReadmeExamples.Suppressions(client);
+        Assert.Equal(["POST /suppressions", "POST /suppressions/batch/add", "GET /suppressions"], Mock.Hits.Select(hit => hit.Key));
+        Assert.Equal("spam.example", (string?)Mock.Hits[0].Json!["domain"]);
+        Assert.Equal("junk.example", (string?)Mock.Hits[1].Json!["domains"]![0]);
+        Assert.Equal("all", Mock.Hits[2].Query["kind"]);
     }
 
     [Fact]

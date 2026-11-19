@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.2.2 (2026-11-19)
+
+- The OpenAPI snapshot follows the published document (180 operations, none added or removed).
+- Suppressions can name a whole domain: `Suppressions.CreateAsync(new { domain = "spam.example" })` and `Suppressions.Batch.AddAsync(new { domains = ... })` block every address at that exact domain (subdomains are not covered; consumer mailbox providers such as `gmail.com` are refused). An entry now carries `kind` (`email` or `domain`), `domain` and `removable` (`false` for a permanent bounce or complaint entry), and its `email` is `null` on a domain entry, so code that reads `email` from a list has to allow for no address. `Suppressions.ListAsync` / `ListAllAsync` take `kind` (`email` by default, `domain`, `all`).
+- Domains: `custom_return_path` defaults to `bounce` and cannot be changed after the domain is created; `Domains.UpdateAsync` with it answers `422`.
+- `Deliverability.GetAsync` answers a `domains` array: each sending domain's own standing (`status`, `tier`, `paused_by`, the rates, `pause_margin`, the counts and `window_days`).
+- A new `403` name, `domain_sending_paused`: one sending domain is paused and the team's other domains keep sending (`sending_paused` is still the whole team). Both throw `PermissionDeniedException`; tell them apart by `Name`.
+- Webhooks: `deliverability.warning` and `deliverability.paused` deliveries carry `scope` (`team` or `domain`) and `domain` (`{ id, name }`, `null` for the team). Deliveries come with the `User-Agent` `BillionSend-Webhooks/1.0` from `51.161.117.92`; the README says to let them through a WAF or Cloudflare in front of your endpoint.
+- The live harness refuses, as it does for an address, a recipient at a domain the run put on the suppression list.
+
 ## 0.2.1 (2026-11-19)
 
 - The OpenAPI snapshot follows the published document: 103 operations declare a `403` they did not (`Restricted API key: refused to … (restricted_api_key)`, an `ErrorResponse` body) and 74 more append what a restricted key is refused to their existing `403`; only the public `POST /agent/signup` has none. A `403` still throws `PermissionDeniedException`, and the tests throw each declared status for every operation.

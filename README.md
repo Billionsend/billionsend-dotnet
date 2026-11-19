@@ -202,6 +202,22 @@ await foreach (var contact in client.Contacts.ListAllAsync(new Dictionary<string
 
 Thread search has `SearchAllAsync`. Starting with `before` walks backward. `Pagination.IterateAsync(fetchPage)` builds the same iterator over any page fetcher.
 
+## Suppressions
+
+A suppression blocks an address, or every address at one exact domain (subdomains are not covered, and consumer mailbox providers such as `gmail.com` are refused). An entry has a `kind` (`email` or `domain`), an `email` that is `null` on a domain entry, a `domain` that is `null` on an address entry, and `removable`, which is `false` for a permanent bounce or complaint entry.
+
+```csharp
+await client.Suppressions.CreateAsync(new { domain = "spam.example" });
+await client.Suppressions.Batch.AddAsync(new { emails = new[] { "a@example.com" }, domains = new[] { "junk.example" } });
+
+await foreach (var entry in client.Suppressions.ListAllAsync(new Dictionary<string, object?> { ["kind"] = "all" }))
+{
+    Console.WriteLine((string?)entry["email"] ?? (string?)entry["domain"]);
+}
+```
+
+`kind` on the list is `email` by default, `domain` or `all`.
+
 ## Errors
 
 A refusal or a failure is thrown as a `BillionSendException` subclass:
@@ -218,6 +234,8 @@ A refusal or a failure is thrown as a `BillionSendException` subclass:
 | `ApiConnectionException` | no answer: DNS, connection or TLS failure (`StatusCode` is `null`) |
 | `ApiTimeoutException` | the request timed out (a subclass of `ApiConnectionException`) |
 | `WebhookVerificationException` | a webhook delivery did not verify |
+
+A `PermissionDeniedException` says why in `Name`: `restricted_api_key`, `sending_paused` (the whole team is paused by its deliverability) or `domain_sending_paused` (one sending domain is paused; mail from the team's other domains still goes out).
 
 Each carries `StatusCode`, `Name` (the API's error name, such as `validation_error`; `application_error` when the API sent none), `Message` and `RequestId`, the answer's `x-request-id`: the same id the request has on the dashboard's Logs page, so quote it when you ask about a request.
 
@@ -288,6 +306,8 @@ app.MapPost("/webhooks/billionsend", async (HttpRequest request) =>
 
 `Webhook.Verify` also takes the body as bytes and the headers as a dictionary (any case). During a secret rotation a delivery carries a signature for each live secret, and either secret verifies it.
 
+The `deliverability.warning` and `deliverability.paused` events carry `scope` (`team` or `domain`) and `domain` (`{ id, name }`, `null` for the team). Deliveries are posted with the `User-Agent` `BillionSend-Webhooks/1.0 (+https://billionsend.com/docs/concepts/webhooks)` from `51.161.117.92`; if your endpoint is behind a WAF or Cloudflare, allow them as the [webhooks documentation](https://billionsend.com/docs/concepts/webhooks) says.
+
 ## Configuration
 
 ```csharp
@@ -321,7 +341,7 @@ Every method takes a `RequestOptions` (or its subclass for that operation) with 
 | `Webhooks` | create, list, get, update, delete, rotate signing secret, `Events` (list, get, replay, `Attempts`) |
 | `Automations` | create, list, get, update, remove, validate, duplicate, simulate, stop, metrics, `Runs` (list, get, cancel) |
 | `Events` | create, list, get, update, remove, send (custom events that start automations) |
-| `Suppressions` | create, list, get, delete, `Batch` add / remove |
+| `Suppressions` | create (an address or a whole domain), list, get, delete, `Batch` add (`emails`, `domains`) / remove |
 | `Unsubscribes` | create, list |
 | `Verifications` | availability, estimate, create, list, get |
 | `Usage`, `Deliverability` | get |

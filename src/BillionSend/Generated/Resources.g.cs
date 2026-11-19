@@ -6007,7 +6007,7 @@ namespace BillionSend.Resources
         /// </remarks>
         /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
         /// <c>after</c>, <c>before</c>, <c>origin</c> (<c>bounce</c>, <c>complaint</c>,
-        /// <c>manual</c>).</param>
+        /// <c>manual</c>), <c>kind</c> (<c>email</c>, <c>domain</c>, <c>all</c>).</param>
         /// <param name="options">Per-call options, or <see langword="null"/>.</param>
         /// <param name="cancellationToken">Cancels the call and its retries.</param>
         /// <returns>The parsed JSON answer (<c>ListSuppressionsResponse</c>).</returns>
@@ -6035,7 +6035,7 @@ namespace BillionSend.Resources
         /// </remarks>
         /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
         /// <c>after</c>, <c>before</c>, <c>origin</c> (<c>bounce</c>, <c>complaint</c>,
-        /// <c>manual</c>).</param>
+        /// <c>manual</c>), <c>kind</c> (<c>email</c>, <c>domain</c>, <c>all</c>).</param>
         /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
         /// <param name="cancellationToken">Stops the iteration.</param>
         /// <returns>The list's items, one at a time.</returns>
