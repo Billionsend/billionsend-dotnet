@@ -67,7 +67,7 @@ internal static class ReadmeExamples
         var page = await client.Emails.Receiving.ListAsync(new Dictionary<string, object?>
         {
             ["limit"] = 20,
-            ["inbox_id"] = "6a1f1d38-3c55-4a4e-9a57-0f2b3c4d5e6f", // an inbox's id (not its address); unread needs one, or a key restricted to one
+            ["inbox_id"] = "6a1f1d38-3c55-4a4e-9a57-0f2b3c4d5e6f", // an inbox's ID or its email address; unread needs one, or a key restricted to one
             ["unread"] = "true",
         });
 

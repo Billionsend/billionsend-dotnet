@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 (2026-11-19)
+
+- The OpenAPI snapshot follows the published document: 103 operations declare a `403` they did not (`Restricted API key: refused to … (restricted_api_key)`, an `ErrorResponse` body) and 74 more append what a restricted key is refused to their existing `403`; only the public `POST /agent/signup` has none. A `403` still throws `PermissionDeniedException`, and the tests throw each declared status for every operation.
+- `Emails.Receiving.ListAsync`: the `inbox_id` query takes an inbox ID or its email address, as the `/inboxes/{inbox_id}` paths do (an address that does not exist or belongs to another team answers `404`, a malformed one `422`). The README example says so and a test sends both forms.
+- The API now answers `404 not_found` (not `401 missing_api_key`) for any path that ends in `/`. The SDK's check that refuses an empty path argument before sending is unchanged.
+
 ## 0.2.0 (2026-11-19)
 
 - The OpenAPI snapshot is the published document again (180 operations; `scripts/sync_openapi.py --check` fails CI when they differ, on every push and daily), so the methods and the tests follow the API that is live: `GET /usage` answers `emails.daily` / `emails.monthly`, `contacts`, `domains` and the rest instead of `limits`.

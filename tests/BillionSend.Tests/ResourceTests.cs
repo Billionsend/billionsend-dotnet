@@ -288,6 +288,18 @@ public sealed class ContractMockTests : MockTest
         Assert.Equal("caf\u00e9 \"quoted\" \U0001F600", extra["text"]!.GetValue<string>());
     }
 
+    [Theory]
+    [InlineData("6a1f1d38-3c55-4a4e-9a57-0f2b3c4d5e6f")]
+    [InlineData("agent@acme.billionsend.app")]
+    public async Task FiltersReceivedMailByAnInboxIdOrItsEmailAddress(string inbox)
+    {
+        using var client = Client();
+        await client.Emails.Receiving.ListAsync(new Dictionary<string, object?> { ["inbox_id"] = inbox });
+        var hit = Assert.Single(Mock.Hits);
+        Assert.Equal("GET /emails/receiving", hit.Key);
+        Assert.Equal(inbox, hit.Query["inbox_id"]);
+    }
+
     [Fact]
     public void HasNoMethodsForTheOperationsTheApiDropped()
     {
