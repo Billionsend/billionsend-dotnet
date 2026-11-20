@@ -252,9 +252,11 @@ public sealed class OperationShapeTests : MockTest
     }
 
     [Fact]
-    public void CoversEveryOperationButTheMultipartOneWhichHasItsOwnTests()
+    public void CoversEveryOperationButTheMultipartOnesWhichHaveTheirOwnTests()
     {
-        Assert.Equal(["POST /contacts/imports"], Spec.Operations.Where(o => o.Multipart).Select(o => o.Key));
+        Assert.Equal(
+            ["POST /contacts/imports", "PUT /brand/logo", "PUT /domains/{id}/unsubscribe-page/logo"],
+            Spec.Operations.Where(o => o.Multipart).Select(o => o.Key).OrderBy(key => key, StringComparer.Ordinal));
     }
 
     private static MethodInfo Find(BillionSendClient client, string operationId, out object target)

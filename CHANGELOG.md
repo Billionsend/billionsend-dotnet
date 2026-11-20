@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.0 (2026-11-20)
+
+- The OpenAPI snapshot follows the published document (186 operations, 6 added).
+- New resource `Brand`: `Brand.GetAsync` and `Brand.UpdateAsync` (the team's defaults for the hosted unsubscribe pages: `logo_url`, `accent_color`, `font` (`geist`, `system`, `serif`, `mono`), `company_address`, `powered_by`, `show_topics`, and the read-only `powered_by_locked` and `branding_locked`), `Brand.Logo.UploadAsync` and `Brand.Logo.DeleteAsync`. A write needs a key made by an owner or admin; a key held to one domain is refused with `403 restricted_api_key`.
+- New: `Domains.UnsubscribePage.Logo.UploadAsync` and `DeleteAsync`, a domain's own logo on its unsubscribe pages. An upload is `multipart/form-data` with one `FileUpload` in the field `file` (PNG, JPEG or WebP, judged from the bytes, at most 2 MiB; the answer is `{ object: "logo", logo_url }`, a delete answers `{ object: "logo", deleted: true }`). `FileUpload`'s default content type is still `text/csv`, so pass `"image/png"` (or the image's own type). No logo storage answers `404`, a file the API refuses `422`. Like every multipart upload, a logo upload is not retried after a `5xx` or a dropped connection; a `429` is repeated after its `Retry-After`.
+- A domain's `unsubscribe_page` answers `support_url` (an http(s) link, `null` for none), `powered_by` (`true`, `false`, or `null` to follow the team's default) and the read-only `powered_by_effective` (what recipients see: always `true` on Free, whatever is saved); `Domains.UpdateAsync` writes `support_url` and `powered_by` there. `logo_url` is `null` when no logo is stored.
+- Broadcasts: `dormant_check` (default `true`: a contact who got 8 or more broadcasts and automation emails with no tracked open or click for 120 days gets a "still want these?" email instead, and is left out later if they do not confirm within 14 days; applies only on a sending domain with tracking on) and `include_dormant` (default `false`: `true` also sends to contacts marked dormant) are optional on `Broadcasts.CreateAsync` and `UpdateAsync` and always in the answer of `Broadcasts.GetAsync`.
+- README: a section on the brand and the logos (compiled and run by the tests like the others).
+
 ## 0.2.2 (2026-11-19)
 
 - The OpenAPI snapshot follows the published document (180 operations, none added or removed).

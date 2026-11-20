@@ -175,6 +175,12 @@ public sealed class CoverageTests : MockTest
             ["POST /contacts/imports"] = c => J(c.Contacts.Imports.CreateAsync(ImportForm())),
             ["GET /contacts/imports/{id}"] = c => J(c.Contacts.Imports.GetAsync(Id)),
             ["GET /contacts/{id}/segments"] = c => J(c.Contacts.Segments.ListAsync(Id)),
+            ["GET /brand"] = c => J(c.Brand.GetAsync()),
+            ["PATCH /brand"] = c => J(c.Brand.UpdateAsync(Body("PATCH /brand"))),
+            ["PUT /brand/logo"] = c => J(c.Brand.Logo.UploadAsync(LogoForm())),
+            ["DELETE /brand/logo"] = c => J(c.Brand.Logo.DeleteAsync()),
+            ["PUT /domains/{id}/unsubscribe-page/logo"] = c => J(c.Domains.UnsubscribePage.Logo.UploadAsync(Id, LogoForm())),
+            ["DELETE /domains/{id}/unsubscribe-page/logo"] = c => J(c.Domains.UnsubscribePage.Logo.DeleteAsync(Id)),
             ["POST /domains/claim"] = c => J(c.Domains.Claims.CreateAsync(Body("POST /domains/claim"))),
             ["GET /domains/{id}/claim"] = c => J(c.Domains.Claims.GetAsync(Id)),
             ["POST /domains/{id}/claim/verify"] = c => J(c.Domains.Claims.VerifyAsync(Id)),
@@ -220,7 +226,7 @@ public sealed class CoverageTests : MockTest
     [Fact]
     public void HasExactlyOneCallPerOperationOfTheSnapshot()
     {
-        Assert.Equal(180, Spec.OperationKeys.Count);
+        Assert.Equal(186, Spec.OperationKeys.Count);
         Assert.Empty(Spec.OperationKeys.Except(Calls.Keys).Order());
         Assert.Empty(Calls.Keys.Except(Spec.OperationKeys).Order());
     }
@@ -288,7 +294,7 @@ public sealed class CoverageTests : MockTest
         Assert.Equal(Calls.Count, Mock.Hits.Count);
         Assert.Empty(Spec.OperationKeys.Except(reached).Order());
         Assert.Empty(reached.Except(Spec.OperationKeys).Order());
-        Assert.Equal(180, reached.Count);
+        Assert.Equal(186, reached.Count);
     }
 
     private static MethodInfo? FindMethod(BillionSendClient client, string operationId, string suffix)
@@ -320,6 +326,12 @@ public sealed class CoverageTests : MockTest
         ["on_conflict"] = "skip",
         ["segments"] = new[] { new { id = Id } },
         ["topics"] = new[] { new { id = Id2, subscription = "opt_in" } },
+    };
+
+    // The logo upload is a multipart form with one file part.
+    private static Dictionary<string, object?> LogoForm() => new()
+    {
+        ["file"] = new FileUpload("logo.png", TestImages.Png, "image/png"),
     };
 
     private static Dictionary<string, object?> Q(params (string Key, object? Value)[] pairs) =>

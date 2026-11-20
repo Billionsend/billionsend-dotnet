@@ -24,7 +24,7 @@ internal static class ReadmeExamples
         var sent = await client.Emails.SendAsync(new
         {
             from = "Acme <hello@acme.dev>",
-            to = new[] { "ana@example.com" },
+            to = new[] { "success@simulator.amazonses.com" },
             subject = "Welcome to Acme",
             html = "<p>Glad you are here.</p>",
         });
@@ -60,6 +60,19 @@ internal static class ReadmeExamples
 
         var import = await client.Contacts.Imports.GetAsync((string)queued!["id"]!);
         Console.WriteLine($"{import!["status"]}");
+    }
+
+    public static async Task BrandAndLogos(BillionSendClient client, string domainId)
+    {
+        await client.Brand.UpdateAsync(new { accent_color = "#2B44FF", font = "serif", powered_by = false });
+
+        var logo = await FileUpload.FromFileAsync("logo.png", "image/png");
+        var team = await client.Brand.Logo.UploadAsync(new Dictionary<string, object?> { ["file"] = logo });
+        Console.WriteLine($"{team!["logo_url"]}");
+
+        var own = await client.Domains.UnsubscribePage.Logo.UploadAsync(domainId, new Dictionary<string, object?> { ["file"] = logo });
+        await client.Domains.UpdateAsync(domainId, new { unsubscribe_page = new { support_url = "https://acme.dev/help" } });
+        await client.Domains.UnsubscribePage.Logo.DeleteAsync(domainId); // back to the team's logo
     }
 
     public static async Task RequestsAndAnswers(BillionSendClient client)
@@ -284,6 +297,33 @@ public sealed class ReadmeRunTests : Support.MockTest
             Assert.Equal(["POST /contacts/imports", "GET /contacts/imports/{id}"], Mock.Hits.Select(hit => hit.Key));
             Assert.Contains("filename=\"people.csv\"", Mock.Hits[0].Body);
             Assert.Contains("Ana", Mock.Hits[0].Body);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [Fact]
+    public async Task RunsTheBrandAndLogoExample()
+    {
+        var path = Path.Combine(Directory.GetCurrentDirectory(), "logo.png");
+        await File.WriteAllBytesAsync(path, Support.TestImages.Png);
+        try
+        {
+            using var client = Client();
+            await ReadmeExamples.BrandAndLogos(client, Support.MockTest.Id);
+            Assert.Equal(
+                ["PATCH /brand", "PUT /brand/logo", "PUT /domains/{id}/unsubscribe-page/logo", "PATCH /domains/{id}", "DELETE /domains/{id}/unsubscribe-page/logo"],
+                Mock.Hits.Select(hit => hit.Key));
+            Assert.Equal("""{"accent_color":"#2B44FF","font":"serif","powered_by":false}""", Mock.Hits[0].Body);
+            foreach (var upload in new[] { Mock.Hits[1], Mock.Hits[2] })
+            {
+                Assert.Contains("name=\"file\"; filename=\"logo.png\"", upload.Body);
+                Assert.Contains("Content-Type: image/png", upload.Body);
+            }
+
+            Assert.Equal("""{"unsubscribe_page":{"support_url":"https://acme.dev/help"}}""", Mock.Hits[3].Body);
         }
         finally
         {

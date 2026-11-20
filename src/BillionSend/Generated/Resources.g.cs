@@ -28,6 +28,9 @@ namespace BillionSend
         /// <summary>The <c>automations</c> operations.</summary>
         public AutomationsResource Automations { get; private set; } = null!;
 
+        /// <summary>The <c>brand</c> operations.</summary>
+        public BrandResource Brand { get; private set; } = null!;
+
         /// <summary>The <c>broadcasts</c> operations.</summary>
         public BroadcastsResource Broadcasts { get; private set; } = null!;
 
@@ -88,6 +91,7 @@ namespace BillionSend
             ApiKeys = new ApiKeysResource(api);
             Audiences = new AudiencesResource(api);
             Automations = new AutomationsResource(api);
+            Brand = new BrandResource(api);
             Broadcasts = new BroadcastsResource(api);
             ContactProperties = new ContactPropertiesResource(api);
             Contacts = new ContactsResource(api);
@@ -1006,6 +1010,153 @@ namespace BillionSend.Resources
             Pagination.IterateAsync(
                 (page, ct) => ListAsync(id, page, options, ct),
                 query,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>brand</c> operations.</summary>
+    public sealed class BrandResource
+    {
+        private readonly ApiClient _api;
+
+        internal BrandResource(ApiClient api)
+        {
+            _api = api;
+            Logo = new BrandLogoResource(api);
+        }
+
+        /// <summary>The <c>brand.logo</c> operations.</summary>
+        public BrandLogoResource Logo { get; }
+
+        /// <summary>
+        /// Retrieve the brand defaults.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. The team's brand defaults for its hosted unsubscribe pages (the
+        /// dashboard's Settings → Brand): the logo, accent color, font, footer address and the two
+        /// footer switches. A domain's own `unsubscribe_page` overrides any of them.
+        /// </para>
+        /// <para>
+        /// <c>GET /brand</c> (<c>brand.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>Brand</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/brand", ApiCall.NoPath),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Update the brand defaults.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. Changes the team's brand defaults; fields not sent keep their
+        /// value, null clears one. Needs a key made by an owner or admin (as the dashboard's Brand
+        /// settings do).
+        /// </para>
+        /// <para>
+        /// <c>PATCH /brand</c> (<c>brand.update</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The request body (<c>UpdateBrandRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type), or <see langword="null"/> to send none.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>Brand</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UpdateAsync(
+            object? body = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("PATCH", "/brand", ApiCall.NoPath)
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>brand.logo</c> operations.</summary>
+    public sealed class BrandLogoResource
+    {
+        private readonly ApiClient _api;
+
+        internal BrandLogoResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Remove the team logo.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. Removes the team's logo; pages of domains without a logo of their
+        /// own then show none. Removing a logo that is not there succeeds. Needs a key made by an
+        /// owner or admin.
+        /// </para>
+        /// <para>
+        /// <c>DELETE /brand/logo</c> (<c>brand.logo.delete</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>RemoveLogoResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> DeleteAsync(
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("DELETE", "/brand/logo", ApiCall.NoPath),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Upload the team logo.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. Sets the team's logo, the one every domain's unsubscribe page
+        /// shows unless the domain has its own (PUT /domains/{id}/unsubscribe-page/logo), and the
+        /// team's picture in the dashboard; it replaces any earlier one. Send the image as
+        /// `multipart/form-data` in a field named `file`: PNG, JPEG or WebP, judged from the bytes,
+        /// at most 2 MiB. Needs a key made by an owner or admin.
+        /// </para>
+        /// <para>
+        /// <c>PUT /brand/logo</c> (<c>brand.logo.upload</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The form fields (<c>UploadLogoForm</c>) by name: a <see
+        /// cref="FileUpload"/> becomes a file part, a string is sent as it is and anything else (an
+        /// object or a list) as its JSON text.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>LogoResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UploadAsync(
+            IReadOnlyDictionary<string, object?> body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("PUT", "/brand/logo", ApiCall.NoPath)
+                {
+                    Body = body,
+                    Multipart = true,
+                },
+                options,
                 cancellationToken);
     }
 
@@ -2258,10 +2409,14 @@ namespace BillionSend.Resources
         {
             _api = api;
             Claims = new DomainsClaimsResource(api);
+            UnsubscribePage = new DomainsUnsubscribePageResource(api);
         }
 
         /// <summary>The <c>domains.claims</c> operations.</summary>
         public DomainsClaimsResource Claims { get; }
+
+        /// <summary>The <c>domains.unsubscribePage</c> operations.</summary>
+        public DomainsUnsubscribePageResource UnsubscribePage { get; }
 
         /// <summary>
         /// Create a domain.
@@ -2546,6 +2701,100 @@ namespace BillionSend.Resources
             CancellationToken cancellationToken = default) =>
             _api.RequestAsync(
                 new ApiCall("POST", "/domains/{id}/claim/verify", new[] { id }),
+                options,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>domains.unsubscribePage</c> operations.</summary>
+    public sealed class DomainsUnsubscribePageResource
+    {
+        private readonly ApiClient _api;
+
+        internal DomainsUnsubscribePageResource(ApiClient api)
+        {
+            _api = api;
+            Logo = new DomainsUnsubscribePageLogoResource(api);
+        }
+
+        /// <summary>The <c>domains.unsubscribePage.logo</c> operations.</summary>
+        public DomainsUnsubscribePageLogoResource Logo { get; }
+    }
+
+    /// <summary>The <c>domains.unsubscribePage.logo</c> operations.</summary>
+    public sealed class DomainsUnsubscribePageLogoResource
+    {
+        private readonly ApiClient _api;
+
+        internal DomainsUnsubscribePageLogoResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Remove a domain's unsubscribe page logo.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. Removes this domain's own logo; its unsubscribe pages then show
+        /// the team's logo (GET /brand), or none. Removing a logo that is not there succeeds.
+        /// </para>
+        /// <para>
+        /// <c>DELETE /domains/{id}/unsubscribe-page/logo</c>
+        /// (<c>domains.unsubscribePage.logo.delete</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>RemoveLogoResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> DeleteAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("DELETE", "/domains/{id}/unsubscribe-page/logo", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Upload a domain's unsubscribe page logo.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension. Sets this domain's own logo on its unsubscribe pages, replacing
+        /// any earlier one; send the image as `multipart/form-data` in a field named `file`. PNG,
+        /// JPEG or WebP, judged from the bytes, at most 2 MiB. Afterwards
+        /// `unsubscribe_page.logo_url` on Retrieve a domain returns the new address. A domain
+        /// without a logo of its own shows the team's (PUT /brand/logo). On a plan without branding
+        /// (Free) recipients see the built-in look until the team upgrades.
+        /// </para>
+        /// <para>
+        /// <c>PUT /domains/{id}/unsubscribe-page/logo</c>
+        /// (<c>domains.unsubscribePage.logo.upload</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="body">The form fields (<c>UploadLogoForm</c>) by name: a <see
+        /// cref="FileUpload"/> becomes a file part, a string is sent as it is and anything else (an
+        /// object or a list) as its JSON text.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>LogoResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UploadAsync(
+            string id,
+            IReadOnlyDictionary<string, object?> body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("PUT", "/domains/{id}/unsubscribe-page/logo", new[] { id })
+                {
+                    Body = body,
+                    Multipart = true,
+                },
                 options,
                 cancellationToken);
     }

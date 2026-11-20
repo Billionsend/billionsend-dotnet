@@ -311,7 +311,9 @@ namespace BillionSend.Internal
                 body,
                 contentType,
                 keyed,
-                Retry.IdempotentMethods.Contains(call.Method) || keyed);
+                // A file upload is not repeated after a 5xx or a dropped connection, whatever its
+                // method (a logo is a PUT): nothing says the first attempt did not land.
+                (Retry.IdempotentMethods.Contains(call.Method) && !call.Multipart) || keyed);
         }
 
         private static HttpRequestMessage BuildRequest(Prepared prepared)

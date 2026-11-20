@@ -26,7 +26,7 @@ using var client = new BillionSendClient(); // reads BILLIONSEND_API_KEY
 var sent = await client.Emails.SendAsync(new
 {
     from = "Acme <hello@acme.dev>",
-    to = new[] { "ana@example.com" },
+    to = new[] { "success@simulator.amazonses.com" },
     subject = "Welcome to Acme",
     html = "<p>Glad you are here.</p>",
 });
@@ -99,6 +99,24 @@ var queued = await client.Contacts.Imports.CreateAsync(new Dictionary<string, ob
 var import = await client.Contacts.Imports.GetAsync((string)queued!["id"]!);
 Console.WriteLine($"{import!["status"]}");
 ```
+
+## Brand and unsubscribe page logos
+
+`Brand` holds the team's defaults for the hosted unsubscribe pages: accent color, font, footer address and the two footer switches. A domain's own `unsubscribe_page` overrides any of them, and its `support_url` and `powered_by` are set through `Domains.UpdateAsync` (`null` clears one; `powered_by_effective` in the answer is what recipients see). Writing needs a key made by an owner or admin. A logo goes up as `multipart/form-data` with one `FileUpload` in the field `file`: PNG, JPEG or WebP (judged from the bytes), at most 2 MiB. `FileUpload` defaults to `text/csv`, so pass the image's content type:
+
+```csharp
+await client.Brand.UpdateAsync(new { accent_color = "#2B44FF", font = "serif", powered_by = false });
+
+var logo = await FileUpload.FromFileAsync("logo.png", "image/png");
+var team = await client.Brand.Logo.UploadAsync(new Dictionary<string, object?> { ["file"] = logo });
+Console.WriteLine($"{team!["logo_url"]}");
+
+var own = await client.Domains.UnsubscribePage.Logo.UploadAsync(domainId, new Dictionary<string, object?> { ["file"] = logo });
+await client.Domains.UpdateAsync(domainId, new { unsubscribe_page = new { support_url = "https://acme.dev/help" } });
+await client.Domains.UnsubscribePage.Logo.DeleteAsync(domainId); // back to the team's logo
+```
+
+An upload is not retried after a `5xx` or a dropped connection, as it carries no `Idempotency-Key`; a `429` is repeated after its `Retry-After`.
 
 ## Send once: idempotency
 
