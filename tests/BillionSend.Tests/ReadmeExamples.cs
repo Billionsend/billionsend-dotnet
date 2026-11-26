@@ -42,6 +42,7 @@ internal static class ReadmeExamples
         {
             human_email = "owner@acme.dev",
             name = "Support agent",
+            // username = "support-agent", // optional
         });
 
         using var agent = new BillionSendClient((string)signup!["api_key"]!);
@@ -244,6 +245,7 @@ internal static class ReadmeExamples
             MaxRetries = 2,                           // see Retries and timeouts
             HttpClient = httpClient,                  // default: one the client creates and disposes
             Headers = new Dictionary<string, string> { ["X-My-Header"] = "value" }, // sent with every request
+            JsonSerializerOptions = null,             // how your own request types are written (default: snake_case property names)
         });
     }
 }

@@ -2,7 +2,7 @@
 
 The official .NET client for the [BillionSend](https://billionsend.com) email API: send email, run inboxes for people and agents, stream inbox events, verify webhooks, and manage domains, contacts and broadcasts.
 
-- Every API operation, one async method each, named after the BillionSend OpenAPI document.
+- Every API operation, one async method each, named after the BillionSend OpenAPI document. This version (0.3.1) covers all 186 operations of the published document; the snapshot it is built from is `openapi/api.openapi.json`.
 - Answers as `System.Text.Json` trees (`JsonNode`); failures as exceptions you can tell apart by type.
 - Safe sends: every send carries an `Idempotency-Key`, so retries after a timeout never send twice.
 - `IAsyncEnumerable` for every cursor list and for live inbox events, with automatic resume.
@@ -55,6 +55,7 @@ var signup = await anonymous.Agent.SignupAsync(new
 {
     human_email = "owner@acme.dev",
     name = "Support agent",
+    // username = "support-agent", // optional
 });
 
 using var agent = new BillionSendClient((string)signup!["api_key"]!);
@@ -102,7 +103,7 @@ Console.WriteLine($"{import!["status"]}");
 
 ## Brand and unsubscribe page logos
 
-`Brand` holds the team's defaults for the hosted unsubscribe pages: accent color, font, footer address and the two footer switches. A domain's own `unsubscribe_page` overrides any of them, and its `support_url` and `powered_by` are set through `Domains.UpdateAsync` (`null` clears one; `powered_by_effective` in the answer is what recipients see). Writing needs a key made by an owner or admin. A logo goes up as `multipart/form-data` with one `FileUpload` in the field `file`: PNG, JPEG or WebP (judged from the bytes), at most 2 MiB. `FileUpload` defaults to `text/csv`, so pass the image's content type:
+`Brand` holds the team's defaults for the hosted unsubscribe pages: logo, accent color, font, footer address and the two footer switches (`powered_by`, `show_topics`). A domain's own `unsubscribe_page` overrides any of them, and its `support_url` and `powered_by` are set through `Domains.UpdateAsync` (`null` clears one; `powered_by_effective` in the answer is what recipients see). Writing needs a key made by an owner or admin. A logo goes up as `multipart/form-data` with one `FileUpload` in the field `file`: PNG, JPEG or WebP (judged from the bytes), at most 2 MiB. `FileUpload` defaults to `text/csv`, so pass the image's content type:
 
 ```csharp
 await client.Brand.UpdateAsync(new { accent_color = "#2B44FF", font = "serif", powered_by = false });
@@ -191,7 +192,7 @@ var code = await client.Inboxes.Codes.LatestAsync("support@acme.dev", new Dictio
 - `InboxStreamEvent`: `Id`, `Event` and `Data`, where `Event` is the webhook event name (`inbox.email.received`, `inbox.thread.created`, `inbox.draft.sent`, `email.received`, …) and `Data` is `{ type, created_at, inbox_id, data }`, the webhook payload's metadata; `Payload` is its inner `data` with the ids to read next (`thread_id`, `email_id`, `draft_id`).
 - `StreamGapEvent`: `Event` is `stream.gap`, `Id` is `null` and `Reason` says why: the stream resumed from further back than the server keeps (24 hours), so events may be missing and the lists should be read again. One stream hands it out once per position.
 
-When the connection drops (the server also closes every stream about every ten minutes), the stream reconnects with `Last-Event-ID` and replays what it missed before the live events. A connection that sends nothing at all for `IdleTimeout` (default 45 seconds; the server writes a keepalive every 15) is taken for dead, as when a NAT or proxy drops it without a reset, and is reconnected the same way; `TimeSpan.Zero` turns this off. It gives up after `MaxReconnects` failures in a row (default 5) with an `ApiConnectionException`; a refusal a retry cannot fix (a revoked key) is thrown as its own type. One inbox's stream ends after that inbox's `inbox.deleted` or `inbox.expired`.
+When the connection drops (the server also closes every stream about every ten minutes), the stream waits `ReconnectDelay` (default 1 second, or what the server's `retry` field asks) and reconnects with `Last-Event-ID`, replaying what it missed before the live events. `Reconnect = false` turns reconnecting off. A connection that sends nothing at all for `IdleTimeout` (default 45 seconds; the server writes a keepalive every 15) is taken for dead, as when a NAT or proxy drops it without a reset, and is reconnected the same way; `TimeSpan.Zero` or `Timeout.InfiniteTimeSpan` turns this off. It gives up after `MaxReconnects` failures in a row (default 5) with an `ApiConnectionException`; a refusal a retry cannot fix (a revoked key) is thrown as its own type. One inbox's stream ends after that inbox's `inbox.deleted` or `inbox.expired`.
 
 ```csharp
 await using var stream = await client.Inboxes.Events.StreamAsync(
@@ -249,6 +250,7 @@ A refusal or a failure is thrown as a `BillionSendException` subclass:
 | `ConflictException` | `409`, such as an idempotency key reused with a different payload |
 | `RateLimitException` | `429`; `RetryAfter` holds the server's hint in seconds |
 | `ApiException` | `5xx` |
+| `BillionSendException` | any other status; also a call that cannot be sent: a path argument that is missing, empty, `.` or `..`, or a header value with a character other than printable ASCII (the message names the header, never its value). Nothing is sent and it is never retried |
 | `ApiConnectionException` | no answer: DNS, connection or TLS failure (`StatusCode` is `null`) |
 | `ApiTimeoutException` | the request timed out (a subclass of `ApiConnectionException`) |
 | `WebhookVerificationException` | a webhook delivery did not verify |
@@ -277,7 +279,7 @@ catch (BillionSendException error)
 }
 ```
 
-Cancelling a call's `CancellationToken` throws `OperationCanceledException`, as everywhere in .NET.
+Cancelling a call's `CancellationToken` throws `OperationCanceledException`, as everywhere in .NET. A success with no body (a `204`, say) returns `null`.
 
 ## Retries and timeouts
 
@@ -298,7 +300,7 @@ await client.Emails.SendAsync(message, new IdempotentRequestOptions { MaxRetries
 
 ## Verify webhooks
 
-Every webhook delivery is signed with the endpoint's `whsec_` secret (shown when you create the endpoint, and by `Webhooks.RotateSigningSecretAsync`). `Webhook.Verify` checks the signature and the timestamp (within 5 minutes by default, so a captured delivery cannot be replayed) and returns the parsed event; anything wrong throws a `WebhookVerificationException`. Pass the body exactly as it arrived, before any JSON parsing. In ASP.NET Core:
+Every webhook delivery is signed with the endpoint's `whsec_` secret (shown when you create the endpoint, and by `Webhooks.RotateSigningSecretAsync`). `Webhook.Verify` reads the `webhook-id`, `webhook-timestamp` and `webhook-signature` headers, checks the signature and the timestamp (within 5 minutes by default, so a captured delivery cannot be replayed) and returns the parsed event as a `JsonNode`; anything wrong throws a `WebhookVerificationException`. Pass the body exactly as it arrived, before any JSON parsing. In ASP.NET Core:
 
 ```csharp
 app.MapPost("/webhooks/billionsend", async (HttpRequest request) =>
@@ -322,7 +324,7 @@ app.MapPost("/webhooks/billionsend", async (HttpRequest request) =>
 });
 ```
 
-`Webhook.Verify` also takes the body as bytes and the headers as a dictionary (any case). During a secret rotation a delivery carries a signature for each live secret, and either secret verifies it.
+`Webhook.Verify` also takes the body as bytes and the headers as a dictionary or any sequence of name and value pairs (names in any case). `new WebhookVerifyOptions { Tolerance = TimeSpan.FromMinutes(10) }` changes the tolerance. During a secret rotation a delivery carries a signature for each live secret, and either secret verifies it.
 
 The `deliverability.warning` and `deliverability.paused` events carry `scope` (`team` or `domain`) and `domain` (`{ id, name }`, `null` for the team). Deliveries are posted with the `User-Agent` `BillionSend-Webhooks/1.0 (+https://billionsend.com/docs/concepts/webhooks)` from `51.161.117.92`; if your endpoint is behind a WAF or Cloudflare, allow them as the [webhooks documentation](https://billionsend.com/docs/concepts/webhooks) says.
 
@@ -337,6 +339,7 @@ var client = new BillionSendClient(new BillionSendOptions
     MaxRetries = 2,                           // see Retries and timeouts
     HttpClient = httpClient,                  // default: one the client creates and disposes
     Headers = new Dictionary<string, string> { ["X-My-Header"] = "value" }, // sent with every request
+    JsonSerializerOptions = null,             // how your own request types are written (default: snake_case property names)
 });
 ```
 
@@ -349,14 +352,15 @@ Every method takes a `RequestOptions` (or its subclass for that operation) with 
 | `Emails` | send, batch, list, get, update, cancel, delete, insights, share, unshare, `Attachments` (list, get) |
 | `Emails.Metrics` | `GetAsync` (the `emails.metrics` operation), links, countries, clients |
 | `Emails.Receiving` | received mail: list, get, delete, reply, forward, `Attachments` (list, get, text) |
-| `Domains` | create, list, get, update, delete, verify, `Claims` (create, get, verify) |
+| `Domains` | create, list, get, update, delete, verify, `Claims` (create, get, verify), `UnsubscribePage.Logo` (upload, delete) |
+| `Brand` | get, update, `Logo` (upload, delete) |
 | `ApiKeys` | create, list, update, delete |
-| `Contacts` | create, list, get, update, delete, preferences link, `Batch`, `Topics`, `Segments` (list, add, remove), `Imports` (create, list, get) |
+| `Contacts` | create, list, get, update, delete, preferences link, `Batch` (create, get, remove), `Topics` (list, update), `Segments` (list, add, remove), `Imports` (create, list, get) |
 | `Audiences.Contacts` | contacts addressed through an audience |
 | `ContactProperties`, `Segments`, `Topics` | create, list, get, update, delete (segment contacts under `Segments.Contacts`) |
 | `Broadcasts` | create, list, get, update, delete, send, duplicate, cancel, recipients, clicked links |
 | `Templates` | create, list, get, update, delete, publish, duplicate |
-| `Webhooks` | create, list, get, update, delete, rotate signing secret, `Events` (list, get, replay, `Attempts`) |
+| `Webhooks` | create, list, get, update, delete, rotate signing secret, `Events` (list, get, replay, `Attempts` (list)) |
 | `Automations` | create, list, get, update, remove, validate, duplicate, simulate, stop, metrics, `Runs` (list, get, cancel) |
 | `Events` | create, list, get, update, remove, send (custom events that start automations) |
 | `Suppressions` | create (an address or a whole domain), list, get, delete, `Batch` add (`emails`, `domains`) / remove |
@@ -365,7 +369,7 @@ Every method takes a `RequestOptions` (or its subclass for that operation) with 
 | `Usage`, `Deliverability` | get |
 | `Logs` | list, get |
 | `OauthGrants` | list, revoke |
-| `Inboxes` | create, list, get, update, delete, send, `Agent` (get, update), `Safety`, `Labels`, `Threads` (search, labels, emails, reply, forward), `Quarantine`, `Codes`, `Drafts`, `Events` |
+| `Inboxes` | create, list, get, update, delete, send, `Agent` (get, update), `Safety` (get, update), `Labels` (list, create, update, delete), `Threads` (search, list, get, update, delete, `Emails` (list, get, reply, forward), `Labels` (add, set, remove)), `Quarantine` (list, release), `Codes` (latest), `Drafts` (create, list, get, update, delete, send, reject), `Events` (stream, stream one inbox) |
 | `Agent` | signup, status, claim email |
 
 Each method's documentation names the API schema of its body and answer (`SendEmailRequest`, `Inbox`, …), described in the [API reference](https://billionsend.com/docs).
@@ -399,7 +403,7 @@ Every answer the offline tests' fake API gives, and every request the SDK sends 
 BILLIONSEND_E2E_API_KEY=bs_... dotnet test tests/BillionSend.E2E
 ```
 
-It needs a key with full access to an account that has a verified sending domain (the sender is `SDK E2E <sdk-e2e@mail.billionsend.dev>`), sends fewer than 20 emails, and makes at most 150 requests at one a second. Set `BILLIONSEND_OPENAPI_PATH` to check against another copy of the document than the snapshot.
+It needs a key with full access to an account that has a verified sending domain (the harness sends from one fixed test address, written in `tests/BillionSend.E2E`), sends fewer than 20 emails, and makes at most 150 requests at one a second. Set `BILLIONSEND_OPENAPI_PATH` to check against another copy of the document than the snapshot.
 
 The contract is `openapi/api.openapi.json`, a snapshot of the published OpenAPI document. `src/BillionSend/Generated/Resources.g.cs` is generated from it: one method per operation, an iterator per cursor list, and the operation's descriptions as doc comments. The tests run every SDK method against a local mock that checks each request against that snapshot and answers from it, and fail when an operation has no SDK method. When the API changes:
 
