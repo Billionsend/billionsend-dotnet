@@ -2,7 +2,7 @@
 
 The official .NET client for the [BillionSend](https://billionsend.com) email API: send email, run inboxes for people and agents, stream inbox events, verify webhooks, and manage domains, contacts and broadcasts.
 
-- Every API operation, one async method each, named after the BillionSend OpenAPI document. This version (0.3.1) covers all 186 operations of the published document; the snapshot it is built from is `openapi/api.openapi.json`.
+- Every API operation, one async method each, named after the BillionSend OpenAPI document. This version (0.4.0) covers all 193 operations of the published document; the snapshot it is built from is `openapi/api.openapi.json`.
 - Answers as `System.Text.Json` trees (`JsonNode`); failures as exceptions you can tell apart by type.
 - Safe sends: every send carries an `Idempotency-Key`, so retries after a timeout never send twice.
 - `IAsyncEnumerable` for every cursor list and for live inbox events, with automatic resume.
@@ -359,9 +359,10 @@ Every method takes a `RequestOptions` (or its subclass for that operation) with 
 | `Audiences.Contacts` | contacts addressed through an audience |
 | `ContactProperties`, `Segments`, `Topics` | create, list, get, update, delete (segment contacts under `Segments.Contacts`) |
 | `Broadcasts` | create, list, get, update, delete, send, duplicate, cancel, recipients, clicked links |
+| `BroadcastGroups` | one send from several sending domains: create, list, get, update, remove, send, cancel |
 | `Templates` | create, list, get, update, delete, publish, duplicate |
 | `Webhooks` | create, list, get, update, delete, rotate signing secret, `Events` (list, get, replay, `Attempts` (list)) |
-| `Automations` | create, list, get, update, remove, validate, duplicate, simulate, stop, metrics, `Runs` (list, get, cancel) |
+| `Automations` | create, list, get, update, remove, validate, duplicate, simulate, stop (optionally `cancel_runs`), metrics, `Runs` (list, get, cancel) |
 | `Events` | create, list, get, update, remove, send (custom events that start automations) |
 | `Suppressions` | create (an address or a whole domain), list, get, delete, `Batch` add (`emails`, `domains`) / remove |
 | `Unsubscribes` | create, list |

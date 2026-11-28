@@ -33,6 +33,13 @@ public sealed class CoverageTests : MockTest
             ["DELETE /audiences/{audienceId}/contacts/{id}"] = c => J(c.Audiences.Contacts.DeleteAsync(Id, Id2)),
             ["GET /audiences/{audienceId}/contacts/{id}"] = c => J(c.Audiences.Contacts.GetAsync(Id, Id2)),
             ["PATCH /audiences/{audienceId}/contacts/{id}"] = c => J(c.Audiences.Contacts.UpdateAsync(Id, Id2, null)),
+            ["GET /broadcast-groups"] = c => J(c.BroadcastGroups.ListAsync(Q(("limit", 2)))),
+            ["POST /broadcast-groups"] = c => J(c.BroadcastGroups.CreateAsync(Body("POST /broadcast-groups"))),
+            ["DELETE /broadcast-groups/{id}"] = c => J(c.BroadcastGroups.RemoveAsync(Id)),
+            ["GET /broadcast-groups/{id}"] = c => J(c.BroadcastGroups.GetAsync(Id)),
+            ["PATCH /broadcast-groups/{id}"] = c => J(c.BroadcastGroups.UpdateAsync(Id, Body("PATCH /broadcast-groups/{id}"))),
+            ["POST /broadcast-groups/{id}/cancel"] = c => J(c.BroadcastGroups.CancelAsync(Id)),
+            ["POST /broadcast-groups/{id}/send"] = c => J(c.BroadcastGroups.SendAsync(Id, Body("POST /broadcast-groups/{id}/send"))),
             ["GET /broadcasts"] = c => J(c.Broadcasts.ListAsync()),
             ["POST /broadcasts"] = c => J(c.Broadcasts.CreateAsync(Body("POST /broadcasts"))),
             ["DELETE /broadcasts/{id}"] = c => J(c.Broadcasts.DeleteAsync(Id)),
@@ -226,7 +233,7 @@ public sealed class CoverageTests : MockTest
     [Fact]
     public void HasExactlyOneCallPerOperationOfTheSnapshot()
     {
-        Assert.Equal(186, Spec.OperationKeys.Count);
+        Assert.Equal(193, Spec.OperationKeys.Count);
         Assert.Empty(Spec.OperationKeys.Except(Calls.Keys).Order());
         Assert.Empty(Calls.Keys.Except(Spec.OperationKeys).Order());
     }
@@ -248,7 +255,7 @@ public sealed class CoverageTests : MockTest
     {
         var client = Client();
         var lists = Spec.Operations.Where(op => op.Paginated).ToList();
-        Assert.Equal(33, lists.Count);
+        Assert.Equal(36, lists.Count);
         var missing = lists
             .Where(op => FindMethod(client, op.OperationId, "AllAsync") is not { } method ||
                 method.ReturnType != typeof(IAsyncEnumerable<JsonNode>))
@@ -294,7 +301,7 @@ public sealed class CoverageTests : MockTest
         Assert.Equal(Calls.Count, Mock.Hits.Count);
         Assert.Empty(Spec.OperationKeys.Except(reached).Order());
         Assert.Empty(reached.Except(Spec.OperationKeys).Order());
-        Assert.Equal(186, reached.Count);
+        Assert.Equal(193, reached.Count);
     }
 
     private static MethodInfo? FindMethod(BillionSendClient client, string operationId, string suffix)

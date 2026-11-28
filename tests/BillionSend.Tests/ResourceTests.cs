@@ -34,6 +34,31 @@ public sealed class ResourceTests : MockTest
     }
 
     [Fact]
+    public async Task StopsAnAutomationWithOrWithoutCancelingItsRuns()
+    {
+        using var client = Client();
+        await client.Automations.StopAsync(Id);
+        await client.Automations.StopAsync(Id, new { cancel_runs = true });
+        var hits = Mock.HitsFor("POST /automations/{id}/stop");
+        Assert.Equal(2, hits.Count);
+        Assert.Null(hits[0].Json);
+        Assert.True((bool?)hits[1].Json!["cancel_runs"]);
+    }
+
+    [Fact]
+    public async Task SendsABroadcastGroupNowOrOnASchedule()
+    {
+        using var client = Client();
+        await client.BroadcastGroups.SendAsync(Id);
+        await client.BroadcastGroups.SendAsync(Id, new { scheduled_at = "in 1 hour" });
+        await client.BroadcastGroups.CancelAsync(Id);
+        var hits = Mock.HitsFor("POST /broadcast-groups/{id}/send");
+        Assert.Null(hits[0].Json);
+        Assert.Equal("in 1 hour", (string?)hits[1].Json!["scheduled_at"]);
+        Assert.Single(Mock.HitsFor("POST /broadcast-groups/{id}/cancel"));
+    }
+
+    [Fact]
     public async Task SendsABatchWithTheBatchValidationHeader()
     {
         using var client = Client();

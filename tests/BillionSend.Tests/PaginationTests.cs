@@ -43,6 +43,18 @@ public sealed class PaginationTests : MockTest
     }
 
     [Fact]
+    public async Task WalksBroadcastGroupsAndTopicsLikeAnyOtherList()
+    {
+        Mock.Page("GET /broadcast-groups", true, Ids[0], Ids[1]);
+        Mock.Page("GET /broadcast-groups", false, Ids[2]);
+        Mock.Page("GET /topics", false, Ids[0]);
+        using var client = Client();
+        Assert.Equal(Ids, await Ids_(client.BroadcastGroups.ListAllAsync(new Dictionary<string, object?> { ["limit"] = 2 })));
+        Assert.Equal(Ids[1], Mock.HitsFor("GET /broadcast-groups")[1].Query["after"]);
+        Assert.Equal([Ids[0]], await Ids_(client.Topics.ListAllAsync()));
+    }
+
+    [Fact]
     public async Task WalksBackwardWithBeforeTheFirstIdWhenStartedWithBefore()
     {
         Mock.Page("GET /domains", true, Ids[1], Ids[2]);

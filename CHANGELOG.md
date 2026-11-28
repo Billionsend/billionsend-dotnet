@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.0 (2026-11-28)
+
+- The OpenAPI snapshot follows the published document of 27 November 2026 (193 operations, 7 added).
+- New resource `BroadcastGroups`, one send from several sending domains: `CreateAsync`, `ListAsync` / `ListAllAsync`, `GetAsync`, `UpdateAsync`, `RemoveAsync`, `SendAsync` and `CancelAsync`. A group holds a broadcast per domain with the same content; each contact is mailed from one of the domains and keeps it. A broadcast that belongs to a group answers `group_id` and is changed, sent and deleted only through the group.
+- `Automations.StopAsync(id, body)` takes an optional body: `cancel_runs: true` also cancels the runs already going. `StopAsync(id)` is unchanged.
+- `Topics.ListAsync` and `Contacts.Topics.ListAsync` take the cursor query (`limit`, `after`, `before`) and have a `ListAllAsync`.
+- Broadcasts answer `audience_id`, the older name of `segment_id`, and `CreateAsync` / `UpdateAsync` accept it as an alias (both with different values answers 422).
+- Emails answer `topic_id` (lists and `GetAsync`), `message_id` (lists) and the `tags` set when they were sent (`GetAsync`).
+- Domains: `region` is one of `us-east-2`, `ap-southeast-1` or `eu-west-3` and is answered on every read; `custom_return_path` is at most 48 characters; `tls` is not supported and answers 422.
+
 ## 0.3.1 (2026-11-26)
 
 - The OpenAPI snapshot follows the published document (186 operations, none added or removed).

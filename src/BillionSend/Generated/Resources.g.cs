@@ -31,6 +31,9 @@ namespace BillionSend
         /// <summary>The <c>brand</c> operations.</summary>
         public BrandResource Brand { get; private set; } = null!;
 
+        /// <summary>The <c>broadcastGroups</c> operations.</summary>
+        public BroadcastGroupsResource BroadcastGroups { get; private set; } = null!;
+
         /// <summary>The <c>broadcasts</c> operations.</summary>
         public BroadcastsResource Broadcasts { get; private set; } = null!;
 
@@ -92,6 +95,7 @@ namespace BillionSend
             Audiences = new AudiencesResource(api);
             Automations = new AutomationsResource(api);
             Brand = new BrandResource(api);
+            BroadcastGroups = new BroadcastGroupsResource(api);
             Broadcasts = new BroadcastsResource(api);
             ContactProperties = new ContactPropertiesResource(api);
             Contacts = new ContactsResource(api);
@@ -787,14 +791,18 @@ namespace BillionSend.Resources
         /// </summary>
         /// <remarks>
         /// <para>
-        /// Sets the automation to disabled: no new runs start; runs already going finish. Stopping
-        /// a stopped automation answers the same.
+        /// Sets the automation to disabled: no new runs start; runs already going finish, unless
+        /// cancel_runs cancels them. Stopping a stopped automation answers the same, and with
+        /// cancel_runs cancels what is still going, so a call cut short can be repeated.
         /// </para>
         /// <para>
         /// <c>POST /automations/{id}/stop</c> (<c>automations.stop</c>)
         /// </para>
         /// </remarks>
         /// <param name="id"><c>id</c>: Automation id</param>
+        /// <param name="body">The request body (<c>StopAutomationRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type), or <see langword="null"/> to send none.</param>
         /// <param name="options">Per-call options, or <see langword="null"/>.</param>
         /// <param name="cancellationToken">Cancels the call and its retries.</param>
         /// <returns>The parsed JSON answer (<c>StopAutomationResponse</c>).</returns>
@@ -802,10 +810,14 @@ namespace BillionSend.Resources
         /// the subclass tells which.</exception>
         public Task<JsonNode?> StopAsync(
             string id,
+            object? body = null,
             RequestOptions? options = null,
             CancellationToken cancellationToken = default) =>
             _api.RequestAsync(
-                new ApiCall("POST", "/automations/{id}/stop", new[] { id }),
+                new ApiCall("POST", "/automations/{id}/stop", new[] { id })
+                {
+                    Body = body,
+                },
                 options,
                 cancellationToken);
 
@@ -1155,6 +1167,244 @@ namespace BillionSend.Resources
                 {
                     Body = body,
                     Multipart = true,
+                },
+                options,
+                cancellationToken);
+    }
+
+    /// <summary>The <c>broadcastGroups</c> operations.</summary>
+    public sealed class BroadcastGroupsResource
+    {
+        private readonly ApiClient _api;
+
+        internal BroadcastGroupsResource(ApiClient api)
+        {
+            _api = api;
+        }
+
+        /// <summary>
+        /// Cancel a broadcast group.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>POST /broadcast-groups/{id}/cancel</c> (<c>broadcastGroups.cancel</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>CancelBroadcastGroupResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> CancelAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/broadcast-groups/{id}/cancel", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Create a broadcast group.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// BillionSend extension: one send from several sending domains. The group holds a
+        /// broadcast per domain, all with the same content, from the same name and local part, to
+        /// the same audience; each contact is mailed from one of the domains and keeps it for later
+        /// sends.
+        /// </para>
+        /// <para>
+        /// <c>POST /broadcast-groups</c> (<c>broadcastGroups.create</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="body">The request body (<c>CreateBroadcastGroupRequest</c>): any object
+        /// that serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or
+        /// your own type).</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>CreateBroadcastGroupResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> CreateAsync(
+            object body,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/broadcast-groups", ApiCall.NoPath)
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Retrieve a broadcast group.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <c>GET /broadcast-groups/{id}</c> (<c>broadcastGroups.get</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>GetBroadcastGroupResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> GetAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/broadcast-groups/{id}", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// List broadcast groups.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Newest first, with cursor pagination: `after` takes the last id of a page and pages
+        /// toward older items, `before` takes the first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
+        /// <c>GET /broadcast-groups</c> (<c>broadcastGroups.list</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>ListBroadcastGroupsResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> ListAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("GET", "/broadcast-groups", ApiCall.NoPath)
+                {
+                    Query = query,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(page, options, ct),
+                query,
+                cancellationToken);
+
+        /// <summary>
+        /// Delete a broadcast group.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Only while all its broadcasts are drafts; they are deleted with it.
+        /// </para>
+        /// <para>
+        /// <c>DELETE /broadcast-groups/{id}</c> (<c>broadcastGroups.remove</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>RemoveBroadcastGroupResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> RemoveAsync(
+            string id,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("DELETE", "/broadcast-groups/{id}", new[] { id }),
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Send a broadcast group.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Every broadcast of the group passes the checks a broadcast's send passes, and the
+        /// capacity plan; all are then scheduled together, or none is.
+        /// </para>
+        /// <para>
+        /// <c>POST /broadcast-groups/{id}/send</c> (<c>broadcastGroups.send</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="body">The request body (<c>SendBroadcastRequest</c>): any object that
+        /// serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or your
+        /// own type), or <see langword="null"/> to send none.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>SendBroadcastGroupResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> SendAsync(
+            string id,
+            object? body = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("POST", "/broadcast-groups/{id}/send", new[] { id })
+                {
+                    Body = body,
+                },
+                options,
+                cancellationToken);
+
+        /// <summary>
+        /// Update a broadcast group.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Only while all its broadcasts are drafts. Its broadcasts are rewritten: one kept keeps
+        /// its id, a new domain gets one, a removed domain's is deleted.
+        /// </para>
+        /// <para>
+        /// <c>PATCH /broadcast-groups/{id}</c> (<c>broadcastGroups.update</c>)
+        /// </para>
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="body">The request body (<c>UpdateBroadcastGroupRequest</c>): any object
+        /// that serializes to it (a <see cref="JsonNode"/>, a dictionary, an anonymous object or
+        /// your own type), or <see langword="null"/> to send none.</param>
+        /// <param name="options">Per-call options, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Cancels the call and its retries.</param>
+        /// <returns>The parsed JSON answer (<c>BroadcastGroupIdResponse</c>).</returns>
+        /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
+        /// the subclass tells which.</exception>
+        public Task<JsonNode?> UpdateAsync(
+            string id,
+            object? body = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            _api.RequestAsync(
+                new ApiCall("PATCH", "/broadcast-groups/{id}", new[] { id })
+                {
+                    Body = body,
                 },
                 options,
                 cancellationToken);
@@ -2315,10 +2565,16 @@ namespace BillionSend.Resources
         /// </summary>
         /// <remarks>
         /// <para>
+        /// Newest first, with cursor pagination: `after` takes the last id of a page and pages
+        /// toward older items, `before` takes the first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
         /// <c>GET /contacts/{id}/topics</c> (<c>contacts.topics.list</c>)
         /// </para>
         /// </remarks>
         /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
         /// <param name="options">Per-call options, or <see langword="null"/>.</param>
         /// <param name="cancellationToken">Cancels the call and its retries.</param>
         /// <returns>The parsed JSON answer (<c>ListContactTopicsResponse</c>).</returns>
@@ -2326,11 +2582,39 @@ namespace BillionSend.Resources
         /// the subclass tells which.</exception>
         public Task<JsonNode?> ListAsync(
             string id,
+            IReadOnlyDictionary<string, object?>? query = null,
             RequestOptions? options = null,
             CancellationToken cancellationToken = default) =>
             _api.RequestAsync(
-                new ApiCall("GET", "/contacts/{id}/topics", new[] { id }),
+                new ApiCall("GET", "/contacts/{id}/topics", new[] { id })
+                {
+                    Query = query,
+                },
                 options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="id"><c>id</c>.</param>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            string id,
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(id, page, options, ct),
+                query,
                 cancellationToken);
 
         /// <summary>
@@ -2887,6 +3171,13 @@ namespace BillionSend.Resources
         /// Delete an email.
         /// </summary>
         /// <remarks>
+        /// <para>
+        /// Deletes the email with its events, stored content and share links; an email that has not
+        /// gone out also gives its volume back. An email that went out less than 7 days ago answers
+        /// `409 email_recently_sent`, because bounce and complaint reports still arrive for it; the
+        /// days count from the moment it was handed over for sending, whatever came of it, and the
+        /// message names the earliest time it can be deleted. BillionSend extension.
+        /// </para>
         /// <para>
         /// <c>DELETE /emails/{id}</c> (<c>emails.delete</c>)
         /// </para>
@@ -6668,20 +6959,52 @@ namespace BillionSend.Resources
         /// </summary>
         /// <remarks>
         /// <para>
+        /// Newest first, with cursor pagination: `after` takes the last id of a page and pages
+        /// toward older items, `before` takes the first id and pages back toward newer ones.
+        /// </para>
+        /// <para>
         /// <c>GET /topics</c> (<c>topics.list</c>)
         /// </para>
         /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
         /// <param name="options">Per-call options, or <see langword="null"/>.</param>
         /// <param name="cancellationToken">Cancels the call and its retries.</param>
         /// <returns>The parsed JSON answer (<c>ListTopicsResponse</c>).</returns>
         /// <exception cref="BillionSendException">The API refused the request, or it got no answer;
         /// the subclass tells which.</exception>
         public Task<JsonNode?> ListAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
             RequestOptions? options = null,
             CancellationToken cancellationToken = default) =>
             _api.RequestAsync(
-                new ApiCall("GET", "/topics", ApiCall.NoPath),
+                new ApiCall("GET", "/topics", ApiCall.NoPath)
+                {
+                    Query = query,
+                },
                 options,
+                cancellationToken);
+
+        /// <summary>
+        /// Every item of <see cref="ListAsync"/>, fetching pages as the loop needs them.
+        /// </summary>
+        /// <remarks>
+        /// Walks forward from <c>after</c> (or the first page) with the last id of each page;
+        /// started with <c>before</c>, it walks backward with the first id. A failed page is thrown
+        /// as its <see cref="BillionSendException"/>.
+        /// </remarks>
+        /// <param name="query">Query parameters, or <see langword="null"/>: <c>limit</c>,
+        /// <c>after</c>, <c>before</c>.</param>
+        /// <param name="options">Options for each page request, or <see langword="null"/>.</param>
+        /// <param name="cancellationToken">Stops the iteration.</param>
+        /// <returns>The list's items, one at a time.</returns>
+        public IAsyncEnumerable<JsonNode> ListAllAsync(
+            IReadOnlyDictionary<string, object?>? query = null,
+            RequestOptions? options = null,
+            CancellationToken cancellationToken = default) =>
+            Pagination.IterateAsync(
+                (page, ct) => ListAsync(page, options, ct),
+                query,
                 cancellationToken);
 
         /// <summary>

@@ -26,7 +26,7 @@ namespace BillionSend
     public partial class BillionSendClient : IDisposable
     {
         /// <summary>The SDK version, sent in the <c>User-Agent</c> header.</summary>
-        public const string SdkVersion = "0.3.1";
+        public const string SdkVersion = "0.4.0";
 
         /// <summary>The API address used when neither the options nor <c>BILLIONSEND_BASE_URL</c> set one.</summary>
         public const string DefaultBaseUrl = "https://api.billionsend.com";
